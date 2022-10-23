@@ -680,6 +680,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha-crypt",
+ "thiserror",
  "tokio",
  "warp",
 ]
