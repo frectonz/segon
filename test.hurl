@@ -7,6 +7,7 @@ POST http://127.0.0.1:3030/register
 HTTP/1.1 201
 [Asserts]
 jsonpath "$.status" == "OK"
+jsonpath "$.token" == "test"
 
 
 POST http://127.0.0.1:3030/login
@@ -18,5 +19,5 @@ POST http://127.0.0.1:3030/login
 HTTP/1.1 200
 [Asserts]
 jsonpath "$.status" == "OK"
-jsonpath "$.data.username" == "test"
-jsonpath "$.data.password" == "test"
+jsonpath "$.token" == "test"
+

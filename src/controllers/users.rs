@@ -1,5 +1,7 @@
 use crate::models::User;
-use crate::ports::{Database, Hasher};
+use crate::ports::{Database, Hasher, TokenGenerator};
+use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
@@ -10,17 +12,21 @@ pub enum RegistrationError {
     UsernameTaken,
 }
 
-pub async fn register(
+pub async fn register<
+    Token: Display + Serialize + for<'a> Deserialize<'a>,
+    TG: TokenGenerator<Token>,
+>(
     user: User,
     db: impl Database,
     hasher: impl Hasher,
-) -> Result<(), RegistrationError> {
-    let u = user.clone();
-    if let Ok(Some(_)) = db.get_user(u.username).await {
+    token_generator: TG,
+) -> Result<Token, RegistrationError> {
+    if let Ok(Some(_)) = db.get_user(&user.username).await {
         return Err(RegistrationError::UsernameTaken);
     }
 
-    let hashed_password = hasher.hash_password(user.password).await;
+    let hashed_password = hasher.hash_password(&user.password).await;
+    let token = token_generator.generate(&user.username);
 
     db.add_user(User {
         username: user.username,
@@ -29,7 +35,7 @@ pub async fn register(
     .await
     .or(Err(RegistrationError::DatabaseError))?;
 
-    Ok(())
+    Ok(token)
 }
 
 #[derive(Error, Debug, PartialEq)]
@@ -42,19 +48,27 @@ pub enum LoginError {
     IncorrectPassword,
 }
 
-pub async fn login(user: User, db: impl Database, hasher: impl Hasher) -> Result<User, LoginError> {
-    let u = user.clone();
+pub async fn login<
+    Token: Display + Serialize + for<'a> Deserialize<'a>,
+    TG: TokenGenerator<Token>,
+>(
+    user: User,
+    db: impl Database,
+    hasher: impl Hasher,
+    token_generator: TG,
+) -> Result<Token, LoginError> {
     let found_user = db
-        .get_user(user.username)
+        .get_user(&user.username)
         .await
         .or(Err(LoginError::DatabaseError))?
         .ok_or(LoginError::UserNotFound)?;
 
     if hasher
-        .compare_password(user.password, found_user.password.clone())
+        .compare_password(&user.password, &found_user.password.clone())
         .await
     {
-        Ok(u)
+        let token = token_generator.generate(&user.username);
+        Ok(token)
     } else {
         Err(LoginError::IncorrectPassword)
     }
@@ -64,7 +78,7 @@ pub async fn login(user: User, db: impl Database, hasher: impl Hasher) -> Result
 mod tests {
     use super::{login, register, LoginError, RegistrationError};
     use crate::{
-        adapters::{MemoryDatabase, ShaHasher},
+        adapters::{MemoryDatabase, ShaHasher, SimpleTokenGenerator},
         models::User,
     };
 
@@ -80,7 +94,7 @@ mod tests {
         let db = MemoryDatabase::new();
         let user = sample_user();
 
-        let reg_result = register(user.clone(), db.clone(), ShaHasher::default()).await;
+        let reg_result = register(user.clone(), db.clone(), ShaHasher, SimpleTokenGenerator).await;
         assert!(reg_result.is_ok());
     }
 
@@ -89,7 +103,7 @@ mod tests {
         let db = MemoryDatabase::failing();
         let user = sample_user();
 
-        let reg_result = register(user.clone(), db.clone(), ShaHasher::default()).await;
+        let reg_result = register(user.clone(), db.clone(), ShaHasher, SimpleTokenGenerator).await;
         assert!(reg_result.is_err());
         assert_eq!(reg_result.err(), Some(RegistrationError::DatabaseError));
     }
@@ -98,10 +112,10 @@ mod tests {
     async fn can_not_register_with_an_existing_username() {
         let db = MemoryDatabase::new();
         let user = sample_user();
-        let reg_result = register(user.clone(), db.clone(), ShaHasher::default()).await;
+        let reg_result = register(user.clone(), db.clone(), ShaHasher, SimpleTokenGenerator).await;
         assert!(reg_result.is_ok());
 
-        let reg_result2 = register(user.clone(), db.clone(), ShaHasher::default()).await;
+        let reg_result2 = register(user.clone(), db.clone(), ShaHasher, SimpleTokenGenerator).await;
         assert!(reg_result2.is_err());
         assert_eq!(reg_result2.err(), Some(RegistrationError::UsernameTaken));
     }
@@ -111,12 +125,11 @@ mod tests {
         let db = MemoryDatabase::new();
         let user = sample_user();
 
-        let reg_result = register(user.clone(), db.clone(), ShaHasher::default()).await;
+        let reg_result = register(user.clone(), db.clone(), ShaHasher, SimpleTokenGenerator).await;
         assert!(reg_result.is_ok());
 
-        let login_result = login(user, db, ShaHasher::default()).await;
+        let login_result = login(user, db, ShaHasher, SimpleTokenGenerator).await;
         assert!(login_result.is_ok());
-        assert_eq!(login_result.ok(), Some(sample_user()));
     }
 
     #[tokio::test]
@@ -124,7 +137,7 @@ mod tests {
         let db = MemoryDatabase::failing();
         let user = sample_user();
 
-        let login_result = login(user, db, ShaHasher::default()).await;
+        let login_result = login(user, db, ShaHasher, SimpleTokenGenerator).await;
         assert!(login_result.is_err());
         assert_eq!(login_result.err(), Some(LoginError::DatabaseError));
     }
@@ -134,7 +147,7 @@ mod tests {
         let db = MemoryDatabase::new();
         let user = sample_user();
 
-        let login_result = login(user, db, ShaHasher::default()).await;
+        let login_result = login(user, db, ShaHasher, SimpleTokenGenerator).await;
         assert!(login_result.is_err());
         assert_eq!(login_result.err(), Some(LoginError::UserNotFound));
     }
@@ -144,7 +157,7 @@ mod tests {
         let db = MemoryDatabase::new();
         let user = sample_user();
 
-        let reg_result = register(user, db.clone(), ShaHasher::default()).await;
+        let reg_result = register(user, db.clone(), ShaHasher, SimpleTokenGenerator).await;
         assert!(reg_result.is_ok());
 
         let login_result = login(
@@ -153,7 +166,8 @@ mod tests {
                 password: "wrong".into(),
             },
             db,
-            ShaHasher::default(),
+            ShaHasher,
+            SimpleTokenGenerator,
         )
         .await;
         assert!(login_result.is_err());

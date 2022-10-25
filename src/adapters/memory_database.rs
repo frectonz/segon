@@ -56,7 +56,7 @@ impl Database for MemoryDatabase {
         Ok(())
     }
 
-    async fn get_user(&self, username: String) -> Result<Option<User>, MemoryDatabaseError> {
+    async fn get_user(&self, username: &str) -> Result<Option<User>, MemoryDatabaseError> {
         if self.fail {
             return Err(MemoryDatabaseError::GetUserError);
         }
