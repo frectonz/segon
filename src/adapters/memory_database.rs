@@ -1,5 +1,5 @@
-use crate::models::User;
-use crate::ports::Database;
+use crate::models::{Game, User};
+use crate::ports::{GameDatabase, UsersDatabase};
 use async_trait::async_trait;
 use std::sync::Arc;
 use thiserror::Error;
@@ -43,10 +43,10 @@ pub enum MemoryDatabaseError {
 }
 
 #[async_trait]
-impl Database for MemoryDatabase {
+impl UsersDatabase for MemoryDatabase {
     type Error = MemoryDatabaseError;
 
-    async fn add_user(&self, user: User) -> Result<(), MemoryDatabaseError> {
+    async fn add_user(&self, user: User) -> Result<(), Self::Error> {
         if self.fail {
             return Err(MemoryDatabaseError::AddUserError);
         }
@@ -56,7 +56,7 @@ impl Database for MemoryDatabase {
         Ok(())
     }
 
-    async fn get_user(&self, username: &str) -> Result<Option<User>, MemoryDatabaseError> {
+    async fn get_user(&self, username: &str) -> Result<Option<User>, Self::Error> {
         if self.fail {
             return Err(MemoryDatabaseError::GetUserError);
         }
@@ -66,5 +66,14 @@ impl Database for MemoryDatabase {
             .clone()
             .into_iter()
             .find(|user| user.username == username))
+    }
+}
+
+#[async_trait]
+impl GameDatabase for MemoryDatabase {
+    type Error = String;
+
+    async fn get_game(&self) -> Result<Game, Self::Error> {
+        todo!()
     }
 }

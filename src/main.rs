@@ -1,28 +1,21 @@
 use segon::{
-    adapters::MemoryDatabase,
-    controllers::authorize,
+    adapters::{Jwt, MemoryDatabase, ShaHasher},
+    controllers::UsersController,
     models::PeerMap,
-    ports::Database,
-    warp_handlers::{login_handler, register_handler},
-    ws::connect,
+    warp_handlers::{login_handler, register_handler, websocket_handler, with_users_controller},
 };
 use std::sync::Arc;
-use tokio::sync::mpsc::{self, UnboundedReceiver};
+use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use tokio_cron_scheduler::{Job, JobScheduler};
-use warp::{ws::Ws, Filter};
-
-fn with_db(
-    db: MemoryDatabase,
-) -> impl Filter<Extract = (MemoryDatabase,), Error = std::convert::Infallible> + Clone {
-    warp::any().map(move || db.clone())
-}
+use warp::Filter;
 
 #[tokio::main]
 async fn main() {
     pretty_env_logger::init();
 
-    let db = MemoryDatabase::new();
+    let controller = UsersController::new(MemoryDatabase::new(), ShaHasher, Jwt);
+
     let schedular = JobScheduler::new().await.unwrap();
     let schedular_cloned = schedular.clone();
     let schedular_filter = warp::any().map(move || schedular_cloned.clone());
@@ -32,32 +25,32 @@ async fn main() {
     // POST /register
     let register_route = warp::path("register")
         .and(warp::post())
+        .and(with_users_controller(controller.clone()))
         .and(json_body)
-        .and(with_db(db.clone()))
         .and_then(register_handler);
 
     // POST /login
     let login_route = warp::path("login")
         .and(warp::post())
+        .and(with_users_controller(controller.clone()))
         .and(json_body)
-        .and(with_db(db.clone()))
         .and_then(login_handler);
 
     let peer_map = PeerMap::default();
     let peer_map_filter = warp::any().map(move || peer_map.clone());
 
-    let (game_start_notifier, websocket_listener) = mpsc::unbounded_channel::<String>();
-    let websocket_listener = Arc::new(Mutex::new(websocket_listener));
-    let websocket_listener = warp::any().map(move || websocket_listener.clone());
+    let (game_start_notifier, game_start_signal_reciever) = mpsc::unbounded_channel::<String>();
+    let game_start_signal_reciever = Arc::new(Mutex::new(game_start_signal_reciever));
+    let game_start_signal_reciever = warp::any().map(move || game_start_signal_reciever.clone());
 
     // GET /game -> websocket upgrade
     let chat = warp::path("game")
-        .and(with_db(db))
+        .and(with_users_controller(controller))
         .and(warp::ws())
         .and(warp::path::param())
         .and(peer_map_filter)
         .and(schedular_filter)
-        .and(websocket_listener)
+        .and(game_start_signal_reciever)
         .and_then(websocket_handler);
 
     let routes = register_route.or(login_route).or(chat);
@@ -72,25 +65,4 @@ async fn main() {
     schedular.start().await.unwrap();
 
     warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
-}
-
-async fn websocket_handler(
-    db: impl Database,
-    ws: Ws,
-    token: String,
-    peer_map: PeerMap,
-    schedular: JobScheduler,
-    websocket_listener: Arc<Mutex<UnboundedReceiver<String>>>,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let authorized = authorize(token, db, segon::adapters::Jwt).await;
-    match authorized {
-        Ok(_) => {
-            Ok(ws
-                .on_upgrade(move |socket| connect(socket, peer_map, schedular, websocket_listener)))
-        }
-        Err(_) => {
-            eprintln!("Unauthenticated user");
-            Err(warp::reject::not_found())
-        }
-    }
 }

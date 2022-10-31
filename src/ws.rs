@@ -1,8 +1,7 @@
-use crate::models::{PeerMap, NEXT_USER_ID};
+use crate::models::{GameStartSignalReceiver, PeerMap, NEXT_USER_ID};
 use futures_util::{future, StreamExt, TryStreamExt};
-use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
+use tokio::sync::mpsc::unbounded_channel;
 use tokio_cron_scheduler::JobScheduler;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::ws::{Message, WebSocket};
@@ -11,7 +10,7 @@ pub async fn connect(
     ws: WebSocket,
     peer_map: PeerMap,
     mut schedular: JobScheduler,
-    websocket_listener: Arc<tokio::sync::Mutex<UnboundedReceiver<String>>>,
+    game_start_signal_reciever: GameStartSignalReceiver,
 ) {
     // Bookkeeping
     let my_id = NEXT_USER_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -48,7 +47,7 @@ pub async fn connect(
 
     let p_map = peer_map.clone();
     let wait_for_game_to_start = Box::pin(async move {
-        let mut websocket_listener = websocket_listener.lock().await;
+        let mut websocket_listener = game_start_signal_reciever.lock().await;
 
         while let Some(_) = websocket_listener.recv().await {
             let questions = vec!["hello 1", "hello 2", "hello 3"];

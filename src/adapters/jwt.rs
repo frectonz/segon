@@ -5,6 +5,7 @@ use thiserror::Error;
 
 const SECRET: &str = "secret";
 
+#[derive(Clone)]
 pub struct Jwt;
 
 #[derive(Error, Debug)]
