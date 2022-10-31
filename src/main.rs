@@ -1,27 +1,31 @@
-use futures_util::{SinkExt, StreamExt, TryFutureExt};
 use segon::{
-    adapters::{MemoryDatabase, ShaHasher, SimpleTokenGenerator},
-    controllers::{login, register},
-    models::User,
+    adapters::MemoryDatabase,
+    controllers::authorize,
+    models::PeerMap,
+    ports::Database,
+    warp_handlers::{login_handler, register_handler},
+    ws::connect,
 };
-use std::collections::HashMap;
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
-};
-use tokio::sync::{mpsc, RwLock};
-use tokio_stream::wrappers::UnboundedReceiverStream;
-use warp::ws::{Message, WebSocket};
-use warp::{hyper::StatusCode, Filter, Reply};
+use std::sync::Arc;
+use tokio::sync::mpsc::{self, UnboundedReceiver};
+use tokio::sync::Mutex;
+use tokio_cron_scheduler::{Job, JobScheduler};
+use warp::{ws::Ws, Filter};
 
-type Users = Arc<RwLock<HashMap<usize, mpsc::UnboundedSender<Message>>>>;
-static NEXT_USER_ID: AtomicUsize = AtomicUsize::new(1);
+fn with_db(
+    db: MemoryDatabase,
+) -> impl Filter<Extract = (MemoryDatabase,), Error = std::convert::Infallible> + Clone {
+    warp::any().map(move || db.clone())
+}
 
 #[tokio::main]
 async fn main() {
     pretty_env_logger::init();
 
     let db = MemoryDatabase::new();
+    let schedular = JobScheduler::new().await.unwrap();
+    let schedular_cloned = schedular.clone();
+    let schedular_filter = warp::any().map(move || schedular_cloned.clone());
 
     let json_body = warp::body::content_length_limit(1024 * 16).and(warp::body::json());
 
@@ -36,158 +40,57 @@ async fn main() {
     let login_route = warp::path("login")
         .and(warp::post())
         .and(json_body)
-        .and(with_db(db))
+        .and(with_db(db.clone()))
         .and_then(login_handler);
 
-    let users = Users::default();
-    // Turn our "state" into a new Filter...
-    let users = warp::any().map(move || users.clone());
+    let peer_map = PeerMap::default();
+    let peer_map_filter = warp::any().map(move || peer_map.clone());
 
-    // GET /chat -> websocket upgrade
+    let (game_start_notifier, websocket_listener) = mpsc::unbounded_channel::<String>();
+    let websocket_listener = Arc::new(Mutex::new(websocket_listener));
+    let websocket_listener = warp::any().map(move || websocket_listener.clone());
+
+    // GET /game -> websocket upgrade
     let chat = warp::path("game")
-        // The `ws()` filter will prepare Websocket handshake...
+        .and(with_db(db))
         .and(warp::ws())
-        .and(users)
-        .map(|ws: warp::ws::Ws, users| {
-            // This will call our function if the handshake succeeds.
-            ws.on_upgrade(move |socket| user_connected(socket, users))
-        });
+        .and(warp::path::param())
+        .and(peer_map_filter)
+        .and(schedular_filter)
+        .and(websocket_listener)
+        .and_then(websocket_handler);
 
     let routes = register_route.or(login_route).or(chat);
+
+    let game_start_job = Job::new("1/60 * * * * *", move |_uuid, _l| {
+        game_start_notifier.send("Game has started".into()).unwrap();
+    })
+    .unwrap();
+
+    schedular.add(game_start_job).await.unwrap();
+
+    schedular.start().await.unwrap();
 
     warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
 }
 
-fn with_db(
-    db: MemoryDatabase,
-) -> impl Filter<Extract = (MemoryDatabase,), Error = std::convert::Infallible> + Clone {
-    warp::any().map(move || db.clone())
-}
-
-async fn register_handler(
-    user: User,
-    db: MemoryDatabase,
-) -> Result<impl warp::reply::Reply, std::convert::Infallible> {
-    match register(user, db, ShaHasher, SimpleTokenGenerator).await {
-        Ok(token) => {
-            let response = warp::reply::json(&serde_json::json!({
-                "status": "OK",
-                "token": token
-            }));
-            Ok(warp::reply::with_status(response, StatusCode::CREATED))
+async fn websocket_handler(
+    db: impl Database,
+    ws: Ws,
+    token: String,
+    peer_map: PeerMap,
+    schedular: JobScheduler,
+    websocket_listener: Arc<Mutex<UnboundedReceiver<String>>>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let authorized = authorize(token, db, segon::adapters::Jwt).await;
+    match authorized {
+        Ok(_) => {
+            Ok(ws
+                .on_upgrade(move |socket| connect(socket, peer_map, schedular, websocket_listener)))
         }
-        Err(err) => {
-            let response = warp::reply::json(&serde_json::json!({
-                "status": "ERROR",
-                "message": err.to_string(),
-            }));
-
-            Ok(warp::reply::with_status(
-                response,
-                StatusCode::INTERNAL_SERVER_ERROR,
-            ))
+        Err(_) => {
+            eprintln!("Unauthenticated user");
+            Err(warp::reject::not_found())
         }
     }
 }
-
-async fn login_handler(
-    user: User,
-    db: MemoryDatabase,
-) -> Result<impl Reply, std::convert::Infallible> {
-    match login(user, db, ShaHasher, SimpleTokenGenerator).await {
-        Ok(token) => {
-            let response = warp::reply::json(&serde_json::json!({
-                "status": "OK",
-                "token": token
-            }));
-
-            Ok(warp::reply::with_status(response, StatusCode::OK))
-        }
-        Err(err) => {
-            let response = warp::reply::json(&serde_json::json!({
-                "status": "UNAUTHORIZED",
-                "error": err.to_string(),
-            }));
-            Ok(warp::reply::with_status(response, StatusCode::UNAUTHORIZED))
-        }
-    }
-}
-
-async fn user_connected(ws: WebSocket, users: Users) {
-    // Use a counter to assign a new unique ID for this user.
-    let my_id = NEXT_USER_ID.fetch_add(1, Ordering::Relaxed);
-
-    eprintln!("new chat user: {}", my_id);
-
-    // Split the socket into a sender and receive of messages.
-    let (mut user_ws_tx, mut user_ws_rx) = ws.split();
-
-    // Use an unbounded channel to handle buffering and flushing of messages
-    // to the websocket...
-    let (tx, rx) = mpsc::unbounded_channel();
-    let mut rx = UnboundedReceiverStream::new(rx);
-
-    tokio::task::spawn(async move {
-        while let Some(message) = rx.next().await {
-            user_ws_tx
-                .send(message)
-                .unwrap_or_else(|e| {
-                    eprintln!("websocket send error: {}", e);
-                })
-                .await;
-        }
-    });
-
-    // Save the sender in our list of connected users.
-    users.write().await.insert(my_id, tx);
-
-    // Return a `Future` that is basically a state machine managing
-    // this specific user's connection.
-
-    // Every time the user sends a message, broadcast it to
-    // all other users...
-    while let Some(result) = user_ws_rx.next().await {
-        let msg = match result {
-            Ok(msg) => msg,
-            Err(e) => {
-                eprintln!("websocket error(uid={}): {}", my_id, e);
-                break;
-            }
-        };
-        user_message(my_id, msg, &users).await;
-    }
-
-    // user_ws_rx stream will keep processing as long as the user stays
-    // connected. Once they disconnect, then...
-    user_disconnected(my_id, &users).await;
-}
-
-async fn user_message(my_id: usize, msg: Message, users: &Users) {
-    // Skip any non-Text messages...
-    let msg = if let Ok(s) = msg.to_str() {
-        s
-    } else {
-        return;
-    };
-
-    let new_msg = format!("<User#{}>: {}", my_id, msg);
-
-    // New message from this user, send it to everyone else (except same uid)...
-    for (&uid, tx) in users.read().await.iter() {
-        if my_id != uid {
-            if let Err(_disconnected) = tx.send(Message::text(new_msg.clone())) {
-                // The tx is disconnected, our `user_disconnected` code
-                // should be happening in another task, nothing more to
-                // do here.
-            }
-        }
-    }
-}
-
-async fn user_disconnected(my_id: usize, users: &Users) {
-    eprintln!("good bye user: {}", my_id);
-
-    // Stream closed up, so remove from the user list
-    users.write().await.remove(&my_id);
-}
-

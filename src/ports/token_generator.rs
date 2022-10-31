@@ -1,9 +1,16 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::fmt::Display;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Claims {
+    pub exp: u64,
+    pub iat: u64,
+    pub sub: String,
+}
 
 #[async_trait]
-pub trait TokenGenerator<Token: Display + Serialize + for<'a> Deserialize<'a>> {
-    fn generate<'a>(&'a self, username: &str) -> Token;
-    fn get_username<'a>(&'a self, token: Token) -> Option<String>;
+pub trait TokenGenerator {
+    type Error;
+    fn generate<'a>(&'a self, username: &str) -> Result<String, Self::Error>;
+    fn get_claims<'a>(&'a self, token: String) -> Option<Claims>;
 }

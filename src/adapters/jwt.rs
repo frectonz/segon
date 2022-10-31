@@ -1,21 +1,21 @@
-use crate::ports::TokenGenerator;
+use crate::ports::{Claims, TokenGenerator};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
-use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
+use thiserror::Error;
 
 const SECRET: &str = "secret";
 
 pub struct Jwt;
 
-#[derive(Debug, Serialize, Deserialize)]
-struct Claims {
-    exp: u64, // Required (validate_exp defaults to true in validation). Expiration time (as UTC timestamp)
-    iat: u64, // Optional. Issued at (as UTC timestamp)
-    sub: String, // Optional. Subject (whom token refers to)
+#[derive(Error, Debug)]
+pub enum JwtError {
+    #[error("invalid token")]
+    TokenError(#[from] jsonwebtoken::errors::Error),
 }
 
-impl TokenGenerator<String> for Jwt {
-    fn generate<'a>(&'a self, username: &str) -> String {
+impl TokenGenerator for Jwt {
+    type Error = JwtError;
+    fn generate<'a>(&'a self, username: &str) -> Result<String, Self::Error> {
         let claims = Claims {
             exp: 24 * 60 * 60,
             iat: SystemTime::now()
@@ -29,19 +29,21 @@ impl TokenGenerator<String> for Jwt {
             &Header::default(),
             &claims,
             &EncodingKey::from_secret(SECRET.as_ref()),
-        )
-        .unwrap();
+        )?;
 
-        token
+        Ok(token)
     }
 
-    fn get_username<'a>(&'a self, token: String) -> Option<String> {
+    fn get_claims<'a>(&'a self, token: String) -> Option<Claims> {
+        let mut validation = Validation::default();
+        validation.validate_exp = false;
+
         decode::<Claims>(
             &token,
             &DecodingKey::from_secret(SECRET.as_ref()),
-            &Validation::default(),
+            &validation,
         )
         .ok()
-        .map(|data| data.claims.sub)
+        .map(|data| data.claims)
     }
 }

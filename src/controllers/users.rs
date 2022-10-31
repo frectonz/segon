@@ -1,7 +1,5 @@
 use crate::models::User;
 use crate::ports::{Database, Hasher, TokenGenerator};
-use serde::{Deserialize, Serialize};
-use std::fmt::Display;
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
@@ -10,23 +8,24 @@ pub enum RegistrationError {
     DatabaseError,
     #[error("requested username already exists")]
     UsernameTaken,
+    #[error("token generation error")]
+    TokenGenerationError,
 }
 
-pub async fn register<
-    Token: Display + Serialize + for<'a> Deserialize<'a>,
-    TG: TokenGenerator<Token>,
->(
+pub async fn register(
     user: User,
     db: impl Database,
     hasher: impl Hasher,
-    token_generator: TG,
-) -> Result<Token, RegistrationError> {
+    token_generator: impl TokenGenerator,
+) -> Result<String, RegistrationError> {
     if let Ok(Some(_)) = db.get_user(&user.username).await {
         return Err(RegistrationError::UsernameTaken);
     }
 
     let hashed_password = hasher.hash_password(&user.password).await;
-    let token = token_generator.generate(&user.username);
+    let token = token_generator
+        .generate(&user.username)
+        .or(Err(RegistrationError::TokenGenerationError))?;
 
     db.add_user(User {
         username: user.username,
@@ -46,17 +45,16 @@ pub enum LoginError {
     UserNotFound,
     #[error("the provided password is incorrect")]
     IncorrectPassword,
+    #[error("token generation error")]
+    TokenGenerationError,
 }
 
-pub async fn login<
-    Token: Display + Serialize + for<'a> Deserialize<'a>,
-    TG: TokenGenerator<Token>,
->(
+pub async fn login(
     user: User,
     db: impl Database,
     hasher: impl Hasher,
-    token_generator: TG,
-) -> Result<Token, LoginError> {
+    token_generator: impl TokenGenerator,
+) -> Result<String, LoginError> {
     let found_user = db
         .get_user(&user.username)
         .await
@@ -67,18 +65,58 @@ pub async fn login<
         .compare_password(&user.password, &found_user.password.clone())
         .await
     {
-        let token = token_generator.generate(&user.username);
+        let token = token_generator
+            .generate(&user.username)
+            .or(Err(LoginError::TokenGenerationError))?;
         Ok(token)
     } else {
         Err(LoginError::IncorrectPassword)
     }
 }
 
+#[derive(Error, Debug, PartialEq)]
+pub enum AuthorizationError {
+    #[error("failed to get user from the database")]
+    DatabaseError,
+    #[error("requested user was not found")]
+    UserNotFound,
+    #[error("invalid token")]
+    InvalidToken,
+    #[error("token has expired")]
+    ExpiredToken,
+}
+
+pub async fn authorize(
+    token: String,
+    db: impl Database,
+    token_generator: impl TokenGenerator,
+) -> Result<(), AuthorizationError> {
+    let claim = token_generator
+        .get_claims(token)
+        .ok_or(AuthorizationError::InvalidToken)?;
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    if now > claim.iat + claim.exp {
+        return Err(AuthorizationError::ExpiredToken);
+    }
+
+    db.get_user(&claim.sub)
+        .await
+        .or(Err(AuthorizationError::DatabaseError))?
+        .ok_or(AuthorizationError::UserNotFound)?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{login, register, LoginError, RegistrationError};
+    use super::{authorize, login, register, LoginError, RegistrationError};
     use crate::{
-        adapters::{MemoryDatabase, ShaHasher, SimpleTokenGenerator},
+        adapters::{Jwt, MemoryDatabase, ShaHasher, SimpleTokenGenerator},
         models::User,
     };
 
@@ -172,5 +210,18 @@ mod tests {
         .await;
         assert!(login_result.is_err());
         assert_eq!(login_result.err(), Some(LoginError::IncorrectPassword));
+    }
+
+    #[tokio::test]
+    async fn simple_authorization() {
+        let db = MemoryDatabase::new();
+        let user = sample_user();
+
+        let reg_result = register(user.clone(), db.clone(), ShaHasher, Jwt).await;
+        assert!(reg_result.is_ok());
+        let token = reg_result.unwrap();
+
+        let decoded_user = authorize(token, db, Jwt).await;
+        assert!(decoded_user.is_ok());
     }
 }

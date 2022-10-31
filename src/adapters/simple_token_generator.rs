@@ -1,13 +1,19 @@
-use crate::ports::TokenGenerator;
+use crate::ports::{Claims, TokenGenerator};
 
 pub struct SimpleTokenGenerator;
 
-impl TokenGenerator<String> for SimpleTokenGenerator {
-    fn generate< 'a>(& 'a self, username: &str) -> String {
-        username.into()
+impl TokenGenerator for SimpleTokenGenerator {
+    type Error = std::convert::Infallible;
+
+    fn generate<'a>(&'a self, username: &str) -> Result<String, Self::Error> {
+        Ok(username.into())
     }
 
-    fn get_username<'a>(& 'a self, token: String) -> Option<String> {
-        Some(token)
+    fn get_claims<'a>(&'a self, token: String) -> Option<Claims> {
+        Some(Claims {
+            iat: 1,
+            exp: 10,
+            sub: token,
+        })
     }
 }

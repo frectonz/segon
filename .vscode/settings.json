@@ -1,7 +1,4 @@
 {
-  "cSpell.words": [
-    "Hasher",
-    "segon",
-    "thiserror"
-  ]
+  "cSpell.words": ["Hasher", "segon", "thiserror"],
+  "deno.enable": true
 }
