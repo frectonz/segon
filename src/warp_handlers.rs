@@ -1,22 +1,47 @@
 use crate::{
-    adapters::{Jwt, MemoryDatabase, ShaHasher},
-    controllers::UsersController,
-    models::{GameStartSignalReceiver, PeerMap, User},
+    controllers::{GameController, UsersController},
+    models::User,
+    ports::{
+        ClientsManager, GameDatabase, GameStartNotifier, Hasher, JobSchedular, TokenGenerator,
+        UsersDatabase,
+    },
     ws::connect,
 };
-use tokio_cron_scheduler::JobScheduler;
 use warp::{hyper::StatusCode, reply::Reply, ws::Ws, Filter};
 
 type WarpResult<T> = Result<T, std::convert::Infallible>;
-type Controller = UsersController<MemoryDatabase, ShaHasher, Jwt>;
+// type Controller = UsersController<MemoryDatabase, ShaHasher, Jwt>;
 
-pub fn with_users_controller(
-    controller: Controller,
-) -> impl Filter<Extract = (Controller,), Error = std::convert::Infallible> + Clone {
+pub fn with_users_controller<
+    D: UsersDatabase + Clone + Send + Sync,
+    H: Hasher + Clone + Send + Sync,
+    T: TokenGenerator + Clone + Send + Sync,
+>(
+    controller: UsersController<D, H, T>,
+) -> impl Filter<Extract = (UsersController<D, H, T>,), Error = std::convert::Infallible> + Clone {
     warp::any().map(move || controller.clone())
 }
 
-pub async fn register_handler(controller: Controller, user: User) -> WarpResult<impl Reply> {
+pub fn with_game_controller<
+    GD: GameDatabase + Send + Sync + Clone + 'static,
+    CM: ClientsManager + Send + Sync + Clone + 'static,
+    JS: JobSchedular + Send + Sync + Clone + 'static,
+    GSN: GameStartNotifier + Send + Sync + Clone + 'static,
+>(
+    controller: GameController<GD, CM, JS, GSN>,
+) -> impl Filter<Extract = (GameController<GD, CM, JS, GSN>,), Error = std::convert::Infallible> + Clone
+{
+    warp::any().map(move || controller.clone())
+}
+
+pub async fn register_handler<
+    D: UsersDatabase + Clone,
+    H: Hasher + Clone + Send,
+    T: TokenGenerator + Clone,
+>(
+    controller: UsersController<D, H, T>,
+    user: User,
+) -> WarpResult<impl Reply> {
     match controller.register(user).await {
         Ok(token) => {
             let response = warp::reply::json(&serde_json::json!({
@@ -39,7 +64,14 @@ pub async fn register_handler(controller: Controller, user: User) -> WarpResult<
     }
 }
 
-pub async fn login_handler(controller: Controller, user: User) -> WarpResult<impl Reply> {
+pub async fn login_handler<
+    D: UsersDatabase + Clone,
+    H: Hasher + Clone,
+    T: TokenGenerator + Clone,
+>(
+    controller: UsersController<D, H, T>,
+    user: User,
+) -> WarpResult<impl Reply> {
     match controller.login(user).await {
         Ok(token) => {
             let response = warp::reply::json(&serde_json::json!({
@@ -59,19 +91,23 @@ pub async fn login_handler(controller: Controller, user: User) -> WarpResult<imp
     }
 }
 
-pub async fn websocket_handler(
-    controller: Controller,
+pub async fn websocket_handler<
+    D: UsersDatabase + Clone,
+    H: Hasher + Clone,
+    T: TokenGenerator + Clone,
+    GD: GameDatabase + Send + Sync + Clone + 'static,
+    CM: ClientsManager + Send + Sync + Clone + 'static,
+    JS: JobSchedular + Send + Sync + Clone + 'static,
+    GSN: GameStartNotifier + Send + Sync + Clone + 'static,
+>(
+    controller: UsersController<D, H, T>,
+    game_controller: GameController<GD, CM, JS, GSN>,
     ws: Ws,
     token: String,
-    peer_map: PeerMap,
-    schedular: JobScheduler,
-    game_start_signal_reciever: GameStartSignalReceiver,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let authorized = controller.authorize(token).await;
     match authorized {
-        Ok(_) => Ok(ws.on_upgrade(move |socket| {
-            connect(socket, peer_map, schedular, game_start_signal_reciever)
-        })),
+        Ok(_) => Ok(ws.on_upgrade(move |socket| connect(game_controller, socket))),
         Err(_) => {
             eprintln!("Unauthenticated user");
             Err(warp::reject::not_found())

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    sync::{atomic::AtomicUsize, Arc, Mutex},
+    sync::{Arc, Mutex},
 };
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use warp::ws::Message;
@@ -14,7 +14,6 @@ pub struct User {
 
 pub type Tx = UnboundedSender<Message>;
 pub type PeerMap = Arc<Mutex<HashMap<usize, Tx>>>;
-pub static NEXT_USER_ID: AtomicUsize = AtomicUsize::new(1);
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct Game {
@@ -24,7 +23,7 @@ pub struct Game {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct Question {
     pub question: String,
-    pub options: OptionIndex,
+    pub options: [String; 4],
     pub answer_idx: OptionIndex,
 }
 
@@ -32,7 +31,7 @@ pub struct Question {
 struct Options([String; 4]);
 
 impl Options {
-    fn get(&self, index: OptionIndex) -> &str {
+    fn _get(&self, index: OptionIndex) -> &str {
         let index = index as usize;
         &self.0[index]
     }
@@ -46,4 +45,9 @@ pub enum OptionIndex {
     Four,
 }
 
-pub type GameStartSignalReceiver = Arc<tokio::sync::Mutex<UnboundedReceiver<String>>>;
+pub type GameStartSignalReceiver = Arc<tokio::sync::Mutex<UnboundedReceiver<()>>>;
+
+pub struct Client {
+    pub id: usize,
+    pub tx: Tx,
+}

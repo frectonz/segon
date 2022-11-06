@@ -11,5 +11,5 @@ pub trait UsersDatabase {
 #[async_trait]
 pub trait GameDatabase {
     type Error;
-    async fn get_game<'a>(&'a self) -> Result<Game, Self::Error>;
+    async fn get_game<'a>(&'a self) -> Game;
 }

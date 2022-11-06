@@ -1,4 +1,4 @@
-use crate::models::{Game, User};
+use crate::models::{Game, OptionIndex, Question, User};
 use crate::ports::{GameDatabase, UsersDatabase};
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -73,7 +73,20 @@ impl UsersDatabase for MemoryDatabase {
 impl GameDatabase for MemoryDatabase {
     type Error = String;
 
-    async fn get_game(&self) -> Result<Game, Self::Error> {
-        todo!()
+    async fn get_game(&self) -> Game {
+        let game = Game {
+            questions: vec![Question {
+                question: "What is ___".into(),
+                options: [
+                    "Option 1".into(),
+                    "Option 2".into(),
+                    "Option 3".into(),
+                    "Option 4".into(),
+                ],
+                answer_idx: OptionIndex::One,
+            }],
+        };
+
+        game
     }
 }

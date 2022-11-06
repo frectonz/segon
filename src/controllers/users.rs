@@ -5,9 +5,9 @@ use thiserror::Error;
 #[derive(Clone)]
 pub struct UsersController<D, H, T>
 where
-    D: UsersDatabase + Clone,
-    H: Hasher + Clone,
-    T: TokenGenerator + Clone,
+    D: UsersDatabase,
+    H: Hasher,
+    T: TokenGenerator,
 {
     db: D,
     hasher: H,
@@ -16,9 +16,9 @@ where
 
 impl<D, H, T> UsersController<D, H, T>
 where
-    D: UsersDatabase + Clone,
-    H: Hasher + Clone,
-    T: TokenGenerator + Clone,
+    D: UsersDatabase,
+    H: Hasher,
+    T: TokenGenerator,
 {
     pub fn new(db: D, hasher: H, token_generator: T) -> Self {
         Self {
@@ -46,7 +46,6 @@ where
             })
             .await
             .or(Err(RegistrationError::DatabaseError))?;
-
         Ok(token)
     }
 
