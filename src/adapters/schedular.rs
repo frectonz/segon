@@ -13,7 +13,7 @@ impl Schedular {
         let schedular = tokio_cron_scheduler::JobScheduler::new().await.unwrap();
 
         let notifier = notifier.clone();
-        let game_start_job = Job::new_async("1/60 * * * * *", move |_uuid, _l| {
+        let game_start_job = Job::new_async("1/10 * * * * *", move |_uuid, _l| {
             let notifier = notifier.clone();
             Box::pin(async move {
                 notifier.send_signal().await;
@@ -23,11 +23,9 @@ impl Schedular {
 
         schedular.add(game_start_job).await.unwrap();
 
-        Schedular { schedular }
-    }
+        schedular.start().await.unwrap();
 
-    pub async fn start(&self) {
-        self.schedular.start().await.unwrap();
+        Schedular { schedular }
     }
 }
 
