@@ -1,9 +1,9 @@
 use crate::ports::{ClientsManager, GameDatabase, GameStartNotifier, JobSchedular};
-use futures_util::{StreamExt, TryStreamExt};
+use futures_util::{Sink, Stream, StreamExt, TryStreamExt};
 use std::time::Duration;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use warp::ws::{Message, WebSocket};
+use warp::ws::Message;
 
 #[derive(Clone)]
 pub struct GameController<GD, CM, JS, GSN>
@@ -35,20 +35,22 @@ where
         }
     }
 
-    pub async fn start(mut self, ws: WebSocket) {
+    pub async fn start<Socket>(mut self, ws: Socket)
+    where
+        Socket: Stream<Item = Result<Message, warp::Error>> + Sink<Message>,
+    {
         let (outgoing, incoming) = ws.split();
         let (tx, rx) = unbounded_channel();
+        let rx = UnboundedReceiverStream::new(rx);
 
         let time = self.schedular.time_till_game().await;
         let message = format!("{}s till game starts", time.as_secs());
 
         tx.send(Message::text(message)).unwrap();
 
-        let _ = self.clients.add_client(tx);
+        let _ = self.clients.add_client(tx).await;
 
-        let rx = UnboundedReceiverStream::new(rx);
-
-        let receive_from_client = incoming.try_for_each(|msg| async move {
+        let receive_from_client = incoming.try_for_each(|msg: Message| async move {
             println!("received msg: {}", msg.to_str().unwrap());
             Ok(())
         });
@@ -56,6 +58,7 @@ where
         let send_to_client = rx.map(Ok).forward(outgoing);
 
         let this = self.clone();
+
         let wait_for_game_to_start = tokio::spawn(async move {
             while let Some(()) = self.notifier.wait_for_signal().await {
                 let game = self.db.get_game().await;
@@ -78,7 +81,7 @@ where
         // pin_mut!(receive_from_client, send_to_client);
         tokio::select! {
             _ = receive_from_client => {}
-            // _ = wait_for_game_to_start => {}
+            _ = wait_for_game_to_start => {}
             _ = send_to_client => {},
         }
     }
