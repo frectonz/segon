@@ -1,7 +1,7 @@
 use segon::{
     adapters::{Jwt, MemoryDatabase, Notifier, PeerMap, Schedular, ShaHasher},
     controllers::{GameController, UsersController},
-    warp_handlers::{
+    handlers::{
         login_handler, register_handler, websocket_handler, with_game_controller,
         with_users_controller,
     },
@@ -19,8 +19,8 @@ async fn main() {
     let game_controller = GameController::new(
         MemoryDatabase::new(),
         PeerMap::default(),
-        schedular,
-        notifier
+        schedular.clone(),
+        notifier,
     );
 
     let json_body = warp::body::content_length_limit(1024 * 16).and(warp::body::json());
@@ -56,5 +56,6 @@ async fn main() {
 
     let routes = register_route.or(login_route).or(chat);
 
+    // schedular.start().await;
     warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
 }
