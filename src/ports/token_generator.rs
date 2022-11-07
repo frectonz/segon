@@ -11,6 +11,6 @@ pub struct Claims {
 #[async_trait]
 pub trait TokenGenerator {
     type Error;
-    fn generate<'a>(&'a self, username: &str) -> Result<String, Self::Error>;
-    fn get_claims<'a>(&'a self, token: String) -> Option<Claims>;
+    fn generate(&self, username: &str) -> Result<String, Self::Error>;
+    fn get_claims(&self, token: String) -> Option<Claims>;
 }
