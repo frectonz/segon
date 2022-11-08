@@ -39,13 +39,6 @@ async fn main() {
         .and(json_body)
         .and_then(login_handler);
 
-    // let peer_map = crate::models::PeerMap::default();
-    // let peer_map_filter = warp::any().map(move || peer_map.clone());
-
-    // let (game_start_notifier, game_start_signal_reciever) = mpsc::unbounded_channel::<()>();
-    // let game_start_signal_reciever = Arc::new(Mutex::new(game_start_signal_reciever));
-    // let game_start_signal_reciever = warp::any().map(move || game_start_signal_reciever.clone());
-
     // GET /game -> websocket upgrade
     let chat = warp::path("game")
         .and(with_users_controller(users_controller))
@@ -56,6 +49,5 @@ async fn main() {
 
     let routes = register_route.or(login_route).or(chat);
 
-    // schedular.start().await;
     warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
 }
