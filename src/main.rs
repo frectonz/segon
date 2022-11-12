@@ -1,5 +1,5 @@
 use segon::{
-    adapters::{Jwt, MemoryDatabase, Notifier, PeerMap, Schedular, ShaHasher},
+    adapters::{Jwt, MemoryDatabase, Notifier, Schedular, ShaHasher},
     controllers::{GameController, UsersController},
     handlers::{
         login_handler, register_handler, websocket_handler, with_game_controller,
@@ -16,12 +16,7 @@ async fn main() {
 
     let notifier = Notifier::new();
     let schedular = Schedular::new(&notifier).await;
-    let game_controller = GameController::new(
-        MemoryDatabase::new(),
-        PeerMap::default(),
-        schedular.clone(),
-        notifier,
-    );
+    let game_controller = GameController::new(MemoryDatabase::new(), schedular.clone(), notifier);
 
     let json_body = warp::body::content_length_limit(1024 * 16).and(warp::body::json());
 

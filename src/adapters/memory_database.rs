@@ -75,16 +75,28 @@ impl GameDatabase for MemoryDatabase {
 
     async fn get_game(&self) -> Game {
         let game = Game {
-            questions: vec![Question {
-                question: "What is ___".into(),
-                options: [
-                    "Option 1".into(),
-                    "Option 2".into(),
-                    "Option 3".into(),
-                    "Option 4".into(),
-                ],
-                answer_idx: OptionIndex::One,
-            }],
+            questions: vec![
+                Question {
+                    question: "What is question 1?".into(),
+                    options: [
+                        "Option 1".into(),
+                        "Option 2".into(),
+                        "Option 3".into(),
+                        "Option 4".into(),
+                    ],
+                    answer_idx: OptionIndex::One,
+                },
+                Question {
+                    question: "What is question 2?".into(),
+                    options: [
+                        "Option 1".into(),
+                        "Option 2".into(),
+                        "Option 3".into(),
+                        "Option 4".into(),
+                    ],
+                    answer_idx: OptionIndex::One,
+                },
+            ],
         };
 
         game

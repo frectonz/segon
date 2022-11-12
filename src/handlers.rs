@@ -2,15 +2,13 @@ use crate::{
     controllers::{GameController, UsersController},
     models::User,
     ports::{
-        ClientsManager, GameDatabase, GameStartNotifier, Hasher, JobSchedular, TokenGenerator,
+        GameDatabase, GameStartNotifier, Hasher, JobSchedular, TokenGenerator,
         UsersDatabase,
     },
-    ws::connect,
 };
 use warp::{hyper::StatusCode, reply::Reply, ws::Ws, Filter};
 
 type WarpResult<T> = Result<T, std::convert::Infallible>;
-// type Controller = UsersController<MemoryDatabase, ShaHasher, Jwt>;
 
 pub fn with_users_controller<
     D: UsersDatabase + Clone + Send + Sync,
@@ -24,12 +22,11 @@ pub fn with_users_controller<
 
 pub fn with_game_controller<
     GD: GameDatabase + Send + Sync + Clone + 'static,
-    CM: ClientsManager + Send + Sync + Clone + 'static,
     JS: JobSchedular + Send + Sync + Clone + 'static,
     GSN: GameStartNotifier + Send + Sync + Clone + 'static,
 >(
-    controller: GameController<GD, CM, JS, GSN>,
-) -> impl Filter<Extract = (GameController<GD, CM, JS, GSN>,), Error = std::convert::Infallible> + Clone
+    controller: GameController<GD, JS, GSN>,
+) -> impl Filter<Extract = (GameController<GD, JS, GSN>,), Error = std::convert::Infallible> + Clone
 {
     warp::any().map(move || controller.clone())
 }
@@ -96,18 +93,17 @@ pub async fn websocket_handler<
     H: Hasher + Clone,
     T: TokenGenerator + Clone,
     GD: GameDatabase + Send + Sync + Clone + 'static,
-    CM: ClientsManager + Send + Sync + Clone + 'static,
     JS: JobSchedular + Send + Sync + Clone + 'static,
     GSN: GameStartNotifier + Send + Sync + Clone + 'static,
 >(
     controller: UsersController<D, H, T>,
-    game_controller: GameController<GD, CM, JS, GSN>,
+    game_controller: GameController<GD, JS, GSN>,
     ws: Ws,
     token: String,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let authorized = controller.authorize(token).await;
     match authorized {
-        Ok(_) => Ok(ws.on_upgrade(move |socket| connect(game_controller, socket))),
+        Ok(_) => Ok(ws.on_upgrade(move |socket| game_controller.start(socket))),
         Err(_) => {
             eprintln!("Unauthenticated user");
             Err(warp::reject::not_found())

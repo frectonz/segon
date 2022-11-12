@@ -1,12 +1,10 @@
 mod jwt;
 mod memory_database;
 mod notifier;
-mod peer_map;
 mod schedular;
 mod sha_hasher;
 pub use jwt::*;
 pub use memory_database::*;
 pub use notifier::*;
-pub use peer_map::*;
 pub use schedular::*;
 pub use sha_hasher::*;

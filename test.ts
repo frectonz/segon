@@ -14,12 +14,15 @@ const registerResponse: {
   token: string;
 } = await register.json();
 
+console.log("RESPONSE", registerResponse);
+
 // websocket client
 const ws = new WebSocket(`ws://localhost:3030/game/${registerResponse.token}`);
 
 ws.onopen = () => {
+  ws.send("ok");
   console.log("connected");
-};
+}
 
 ws.onmessage = (event) => {
   console.log(event.data);
