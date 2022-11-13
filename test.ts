@@ -36,6 +36,8 @@ type Message = {
   answer_idx: "One" | "Two" | "Three" | "Four"
 } | {
   type: "NoGame"
+} | {
+  type: "GameEnd"
 }
 
 ws.onmessage = (event) => {
@@ -54,6 +56,8 @@ ws.onmessage = (event) => {
     console.log("Answer is option", msg.answer_idx);
   } else if (msg.type === "NoGame") {
     console.log("No game");
+  } else if (msg.type === "GameEnd") {
+    console.log("Game ended");
   }
 
 };

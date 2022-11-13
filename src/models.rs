@@ -67,6 +67,7 @@ pub enum ServerMessage {
         answer_idx: OptionIndex,
     },
     NoGame,
+    GameEnd,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

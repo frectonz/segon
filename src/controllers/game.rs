@@ -125,6 +125,12 @@ where
 
                     tx.send(Message::text(message)).unwrap();
                 }
+
+                let tx = tx.lock().await;
+                tx.send(Message::text(
+                    serde_json::to_string(&ServerMessage::GameEnd).unwrap(),
+                ))
+                .unwrap();
             }
         });
 
