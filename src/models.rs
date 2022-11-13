@@ -6,7 +6,7 @@ use std::{
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use warp::ws::Message;
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct User {
     pub username: String,
     pub password: String,
@@ -20,7 +20,7 @@ pub struct Game {
     pub questions: Vec<Question>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Question {
     pub question: String,
     pub options: [String; 4],
@@ -37,7 +37,7 @@ impl Options {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub enum OptionIndex {
     One,
     Two,
@@ -73,7 +73,7 @@ pub enum ServerMessage {
     GameStart,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum AnswerStatus {
     Correct,
     Incorrect,

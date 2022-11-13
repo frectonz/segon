@@ -98,7 +98,7 @@ where
     }
 }
 
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq, Eq)]
 pub enum RegistrationError {
     #[error("failed to add user to the database")]
     DatabaseError,
@@ -108,7 +108,7 @@ pub enum RegistrationError {
     TokenGenerationError,
 }
 
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq, Eq)]
 pub enum LoginError {
     #[error("failed to get user from the database")]
     DatabaseError,
@@ -120,7 +120,7 @@ pub enum LoginError {
     TokenGenerationError,
 }
 
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq, Eq)]
 pub enum AuthorizationError {
     #[error("failed to get user from the database")]
     DatabaseError,
