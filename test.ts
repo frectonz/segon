@@ -38,7 +38,9 @@ type Message = {
   type: "NoGame"
 } | {
   type: "GameEnd"
-}
+} | {
+  type: "GameStart"
+};
 
 ws.onmessage = (event) => {
   const msg: Message = JSON.parse(event.data)
@@ -46,18 +48,20 @@ ws.onmessage = (event) => {
   if (msg.type === "TimeTillGame") {
     console.log("Time till game", msg.time)
   } else if (msg.type === "Question") {
-    console.log(msg.question);
-    for (const [idx, option] of msg.options.entries()) {
-      console.log("  ", idx + 1, option);
+    console.log(" ", msg.question);
+    for (const option of msg.options) {
+      console.log("  ", option);
     }
     ws.send(JSON.stringify({ type: "Answer", answer_idx: "Three" }));
   } else if (msg.type === "Answer") {
-    console.log("Answer status", msg.status);
-    console.log("Answer is option", msg.answer_idx);
+    console.log(" Answer status", msg.status);
+    console.log(" Answer is option", msg.answer_idx);
   } else if (msg.type === "NoGame") {
     console.log("No game");
   } else if (msg.type === "GameEnd") {
     console.log("Game ended");
+  } else if (msg.type === "GameStart") {
+    console.log("Game started");
   }
 
 };

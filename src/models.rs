@@ -68,6 +68,7 @@ pub enum ServerMessage {
     },
     NoGame,
     GameEnd,
+    GameStart,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

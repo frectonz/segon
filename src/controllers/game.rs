@@ -95,6 +95,10 @@ where
                 let tx = tx.lock().await;
 
                 // send a game start message
+                tx.send(Message::text(
+                    serde_json::to_string(&ServerMessage::GameStart).unwrap(),
+                ))
+                .unwrap();
 
                 for question in game.questions.into_iter() {
                     // send question
