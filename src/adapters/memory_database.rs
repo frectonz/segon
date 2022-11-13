@@ -6,7 +6,7 @@ use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::Mutex;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MemoryDatabase {
     users: Arc<Mutex<Vec<User>>>,
     fail: bool,

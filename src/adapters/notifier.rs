@@ -22,6 +22,12 @@ impl Notifier {
     }
 }
 
+impl Default for Notifier {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl GameStartNotifier for Notifier {
     async fn wait_for_signal(&self) -> Option<()> {

@@ -16,7 +16,7 @@ pub enum JwtError {
 
 impl TokenGenerator for Jwt {
     type Error = JwtError;
-    fn generate<'a>(&'a self, username: &str) -> Result<String, Self::Error> {
+    fn generate(&self, username: &str) -> Result<String, Self::Error> {
         let claims = Claims {
             exp: 24 * 60 * 60,
             iat: SystemTime::now()
@@ -35,7 +35,7 @@ impl TokenGenerator for Jwt {
         Ok(token)
     }
 
-    fn get_claims<'a>(&'a self, token: String) -> Option<Claims> {
+    fn get_claims(&self, token: String) -> Option<Claims> {
         let mut validation = Validation::default();
         validation.validate_exp = false;
 

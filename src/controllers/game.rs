@@ -55,8 +55,8 @@ where
         let receive_from_client = incoming.try_for_each(|msg: Message| {
             let msg = msg.to_str().map(serde_json::from_str::<ClientMessage>);
 
-            match msg {
-                Ok(Ok(client_msg)) => match client_msg {
+            if let Ok(Ok(client_msg)) = msg {
+                match client_msg {
                     ClientMessage::Answer { answer_idx: answer } => {
                         let this = this.clone();
                         let username = user.username.clone();
@@ -76,8 +76,7 @@ where
                             };
                         });
                     }
-                },
-                _ => {}
+                }
             };
 
             future::ready(Ok(()))
