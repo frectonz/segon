@@ -1,10 +1,7 @@
 use crate::{
     controllers::{GameController, UsersController},
     models::User,
-    ports::{
-        GameDatabase, GameStartNotifier, Hasher, JobSchedular, TokenGenerator,
-        UsersDatabase,
-    },
+    ports::{GameDatabase, GameStartNotifier, Hasher, JobSchedular, TokenGenerator, UsersDatabase},
 };
 use warp::{hyper::StatusCode, reply::Reply, ws::Ws, Filter};
 
@@ -103,7 +100,7 @@ pub async fn websocket_handler<
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let authorized = controller.authorize(token).await;
     match authorized {
-        Ok(_) => Ok(ws.on_upgrade(move |socket| game_controller.start(socket))),
+        Ok(user) => Ok(ws.on_upgrade(move |socket| game_controller.start(user, socket))),
         Err(_) => {
             eprintln!("Unauthenticated user");
             Err(warp::reject::not_found())

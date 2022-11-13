@@ -72,7 +72,7 @@ where
         }
     }
 
-    pub async fn authorize(&self, token: String) -> Result<(), AuthorizationError> {
+    pub async fn authorize(&self, token: String) -> Result<User, AuthorizationError> {
         let claim = self
             .token_generator
             .get_claims(token)
@@ -87,13 +87,14 @@ where
             return Err(AuthorizationError::ExpiredToken);
         }
 
-        self.db
+        let user = self
+            .db
             .get_user(&claim.sub)
             .await
             .or(Err(AuthorizationError::DatabaseError))?
             .ok_or(AuthorizationError::UserNotFound)?;
 
-        Ok(())
+        Ok(user)
     }
 }
 

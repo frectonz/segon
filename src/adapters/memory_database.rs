@@ -1,6 +1,7 @@
 use crate::models::{Game, OptionIndex, Question, User};
 use crate::ports::{GameDatabase, UsersDatabase};
 use async_trait::async_trait;
+use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::Mutex;
@@ -9,6 +10,7 @@ use tokio::sync::Mutex;
 pub struct MemoryDatabase {
     users: Arc<Mutex<Vec<User>>>,
     fail: bool,
+    answers: Arc<Mutex<HashMap<(String, String), OptionIndex>>>,
 }
 
 impl MemoryDatabase {
@@ -16,6 +18,7 @@ impl MemoryDatabase {
         Self {
             users: Arc::new(Mutex::new(Vec::new())),
             fail: false,
+            answers: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -23,6 +26,7 @@ impl MemoryDatabase {
         Self {
             users: Arc::new(Mutex::new(Vec::new())),
             fail: true,
+            answers: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -30,6 +34,7 @@ impl MemoryDatabase {
         Self {
             users: Arc::new(Mutex::new(users)),
             fail: false,
+            answers: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
@@ -74,7 +79,7 @@ impl GameDatabase for MemoryDatabase {
     type Error = String;
 
     async fn get_game(&self) -> Game {
-        let game = Game {
+        Game {
             questions: vec![
                 Question {
                     question: "What is question 1?".into(),
@@ -97,8 +102,22 @@ impl GameDatabase for MemoryDatabase {
                     answer_idx: OptionIndex::One,
                 },
             ],
-        };
+        }
+    }
 
-        game
+    async fn set_answer(
+        &self,
+        username: &str,
+        question: &str,
+        answer: OptionIndex,
+    ) -> Result<(), Self::Error> {
+        let mut answers = self.answers.lock().await;
+        answers.insert((username.into(), question.into()), answer);
+        Ok(())
+    }
+
+    async fn get_answer(&self, username: &str, question: &str) -> Option<OptionIndex> {
+        let answers = self.answers.lock().await;
+        answers.get(&(username.into(), question.into())).cloned()
     }
 }

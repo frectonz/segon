@@ -39,7 +39,7 @@ impl Options {
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub enum OptionIndex {
-    One = 1,
+    One,
     Two,
     Three,
     Four,
@@ -50,4 +50,27 @@ pub type GameStartSignalReceiver = Arc<tokio::sync::Mutex<UnboundedReceiver<()>>
 pub struct Client {
     pub id: usize,
     pub tx: Tx,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(tag = "type")]
+pub enum ServerMessage {
+    TimeTillGame {
+        time: u64,
+    },
+    Question {
+        question: String,
+        options: [String; 4],
+    },
+    Answer {
+        status: String,
+        answer_idx: OptionIndex,
+    },
+    NoGame,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(tag = "type")]
+pub enum ClientMessage {
+    Answer { answer_idx: OptionIndex },
 }

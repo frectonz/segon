@@ -1,4 +1,4 @@
-use crate::models::{Game, User};
+use crate::models::{Game, OptionIndex, User};
 use async_trait::async_trait;
 
 #[async_trait]
@@ -12,4 +12,11 @@ pub trait UsersDatabase {
 pub trait GameDatabase {
     type Error;
     async fn get_game(&self) -> Game;
+    async fn set_answer(
+        &self,
+        username: &str,
+        question: &str,
+        answer: OptionIndex,
+    ) -> Result<(), Self::Error>;
+    async fn get_answer(&self, username: &str, question: &str) -> Option<OptionIndex>;
 }
