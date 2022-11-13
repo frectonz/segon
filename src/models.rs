@@ -63,11 +63,18 @@ pub enum ServerMessage {
         options: [String; 4],
     },
     Answer {
-        status: String,
+        status: AnswerStatus,
         answer_idx: OptionIndex,
     },
     NoGame,
     GameEnd,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum AnswerStatus {
+    Correct,
+    Incorrect,
+    NoAnswer,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

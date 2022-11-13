@@ -1,5 +1,5 @@
 use crate::{
-    models::{ClientMessage, ServerMessage, User},
+    models::{AnswerStatus, ClientMessage, ServerMessage, User},
     ports::{GameDatabase, GameStartNotifier, JobSchedular},
 };
 use futures_util::{future, Sink, Stream, StreamExt, TryStreamExt};
@@ -92,41 +92,51 @@ where
             let tx = Arc::new(Mutex::new(tx));
             while let Some(()) = self.notifier.wait_for_signal().await {
                 let game = self.db.get_game().await;
+                let tx = tx.lock().await;
 
-                for (i, question) in game.questions.into_iter().enumerate() {
-                    let tx = tx.lock().await;
+                // send a game start message
 
+                for question in game.questions.into_iter() {
+                    // send question
                     let message = serde_json::to_string(&ServerMessage::Question {
                         question: question.question.clone(),
                         options: question.options,
                     })
                     .unwrap();
                     tx.send(Message::text(message)).unwrap();
+
+                    // set current question
                     *current_question.lock().await = Some(question.question.clone());
 
-                    let sleep_time: u64 = (i + 1) as u64 * 10;
-                    tokio::time::sleep(Duration::from_secs(sleep_time)).await;
-                    let answer = match self.db.get_answer(&username, &question.question).await {
+                    // sleep for 10 seconds
+                    tokio::time::sleep(Duration::from_secs(10)).await;
+
+                    // get answer
+                    let answer = self.db.get_answer(&username, &question.question).await;
+                    let answer_status = match answer {
                         Some(answer) => {
                             if answer == question.answer_idx {
-                                "Correct"
+                                AnswerStatus::Correct
                             } else {
-                                "Incorrect"
+                                AnswerStatus::Incorrect
                             }
                         }
-                        None => "NoAnswer",
+                        None => AnswerStatus::NoAnswer,
                     };
 
+                    // send answer
                     let message = serde_json::to_string(&ServerMessage::Answer {
-                        status: answer.into(),
+                        status: answer_status,
                         answer_idx: question.answer_idx,
                     })
                     .unwrap();
-
                     tx.send(Message::text(message)).unwrap();
+
+                    // sleep for 10 seconds
+                    // don't sleep if this is the last question
+                    tokio::time::sleep(Duration::from_secs(10)).await;
                 }
 
-                let tx = tx.lock().await;
                 tx.send(Message::text(
                     serde_json::to_string(&ServerMessage::GameEnd).unwrap(),
                 ))
