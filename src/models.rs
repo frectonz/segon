@@ -67,11 +67,13 @@ pub enum ServerMessage {
         answer_idx: OptionIndex,
     },
     NoGame,
-    GameEnd,
+    GameEnd {
+        score: u32,
+    },
     GameStart,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum AnswerStatus {
     Correct,
     Incorrect,

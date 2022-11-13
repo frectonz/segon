@@ -128,6 +128,12 @@ where
                         None => AnswerStatus::NoAnswer,
                     };
 
+                    // set answer status
+                    let _ = self
+                        .db
+                        .set_answer_status(&username, &question.question, &answer_status)
+                        .await;
+
                     // send answer
                     let message = serde_json::to_string(&ServerMessage::Answer {
                         status: answer_status,
@@ -137,12 +143,24 @@ where
                     tx.send(Message::text(message)).unwrap();
 
                     // sleep for 10 seconds
-                    // don't sleep if this is the last question
                     tokio::time::sleep(Duration::from_secs(10)).await;
                 }
 
+                // calculate score
+                let score = self
+                    .db
+                    .get_answers_statuses(&username)
+                    .await
+                    .unwrap_or_default()
+                    .iter()
+                    .filter(|x| **x == AnswerStatus::Correct)
+                    .count() as u32;
+
+                // set score
+                let _ = self.db.set_score(&username, score).await;
+
                 tx.send(Message::text(
-                    serde_json::to_string(&ServerMessage::GameEnd).unwrap(),
+                    serde_json::to_string(&ServerMessage::GameEnd { score }).unwrap(),
                 ))
                 .unwrap();
             }
