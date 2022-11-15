@@ -1,24 +1,16 @@
 use crate::ports::GameStartNotifier;
 use async_trait::async_trait;
-use std::sync::Arc;
-use tokio::sync::{
-    mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
-    Mutex,
-};
+use tokio::sync::broadcast::{channel, Sender};
 
 #[derive(Clone)]
 pub struct Notifier {
-    receiver: Arc<Mutex<UnboundedReceiver<()>>>,
-    sender: UnboundedSender<()>,
+    sender: Sender<()>,
 }
 
 impl Notifier {
     pub fn new() -> Self {
-        let (sender, receiver) = unbounded_channel::<()>();
-        Self {
-            sender,
-            receiver: Arc::new(Mutex::new(receiver)),
-        }
+        let (sender, _) = channel::<()>(1);
+        Self { sender }
     }
 }
 
@@ -31,11 +23,11 @@ impl Default for Notifier {
 #[async_trait]
 impl GameStartNotifier for Notifier {
     async fn wait_for_signal(&self) -> Option<()> {
-        let mut rx = self.receiver.lock().await;
-        rx.recv().await
+        let mut rx = self.sender.subscribe();
+        rx.recv().await.ok()
     }
 
-    async fn send_signal(&self) -> () {
-        self.sender.send(()).unwrap()
+    async fn send_signal(&self) {
+        self.sender.send(()).unwrap();
     }
 }

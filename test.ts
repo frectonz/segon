@@ -50,26 +50,7 @@ async function test(user: User) {
 
   ws.onmessage = (event) => {
     const msg: Message = JSON.parse(event.data)
-
-    if (msg.type === "TimeTillGame") {
-      console.log(label, "Time till game", msg.time)
-    } else if (msg.type === "Question") {
-      console.log(label, msg.question);
-      for (const option of msg.options) {
-        console.log(label, option);
-      }
-      ws.send(JSON.stringify({ type: "Answer", answer_idx: "One" }));
-    } else if (msg.type === "Answer") {
-      console.log(label, "Answer status", msg.status);
-      console.log(label, "Answer is option", msg.answer_idx);
-    } else if (msg.type === "NoGame") {
-      console.log(label, "No game");
-    } else if (msg.type === "GameEnd") {
-      console.log(label, "Game ended with score", msg.score);
-    } else if (msg.type === "GameStart") {
-      console.log(label, "Game started");
-    }
-
+    console.log(label, msg);
   };
 
   ws.onclose = () => {
