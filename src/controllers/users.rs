@@ -136,7 +136,7 @@ pub enum AuthorizationError {
 mod tests {
     use super::{LoginError, RegistrationError, UsersController};
     use crate::{
-        adapters::{Jwt, MemoryDatabase, ShaHasher},
+        adapters::{Jwt, ShaHasher, UsersMemoryDatabase},
         models::User,
     };
 
@@ -147,12 +147,12 @@ mod tests {
         }
     }
 
-    fn get_controller() -> UsersController<MemoryDatabase, ShaHasher, Jwt> {
-        UsersController::new(MemoryDatabase::new(), ShaHasher, Jwt)
+    fn get_controller() -> UsersController<UsersMemoryDatabase, ShaHasher, Jwt> {
+        UsersController::new(UsersMemoryDatabase::new(), ShaHasher, Jwt)
     }
 
-    fn get_failing_controller() -> UsersController<MemoryDatabase, ShaHasher, Jwt> {
-        UsersController::new(MemoryDatabase::failing(), ShaHasher, Jwt)
+    fn get_failing_controller() -> UsersController<UsersMemoryDatabase, ShaHasher, Jwt> {
+        UsersController::new(UsersMemoryDatabase::failing(), ShaHasher, Jwt)
     }
 
     #[tokio::test]

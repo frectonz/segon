@@ -1,5 +1,5 @@
 use segon::{
-    adapters::{Jwt, MemoryDatabase, Notifier, Schedular, ShaHasher},
+    adapters::{GameMemoryDatabase, Jwt, Notifier, Schedular, ShaHasher, UsersMemoryDatabase},
     controllers::{GameController, UsersController},
     handlers::{
         login_handler, register_handler, websocket_handler, with_game_controller,
@@ -12,11 +12,12 @@ use warp::Filter;
 async fn main() {
     pretty_env_logger::init();
 
-    let users_controller = UsersController::new(MemoryDatabase::new(), ShaHasher, Jwt);
+    let users_controller = UsersController::new(UsersMemoryDatabase::new(), ShaHasher, Jwt);
 
     let notifier = Notifier::new();
     let schedular = Schedular::new(&notifier).await;
-    let game_controller = GameController::new(MemoryDatabase::new(), schedular.clone(), notifier);
+    let game_controller =
+        GameController::new(GameMemoryDatabase::default(), schedular.clone(), notifier);
 
     let json_body = warp::body::content_length_limit(1024 * 16).and(warp::body::json());
 

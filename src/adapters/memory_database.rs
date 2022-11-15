@@ -7,22 +7,16 @@ use thiserror::Error;
 use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, Default)]
-pub struct MemoryDatabase {
+pub struct UsersMemoryDatabase {
     users: Arc<Mutex<Vec<User>>>,
     fail: bool,
-    answers: Arc<Mutex<HashMap<(String, String), OptionIndex>>>,
-    answer_statuses: Arc<Mutex<HashMap<(String, String), AnswerStatus>>>,
-    scores: Arc<Mutex<HashMap<String, u32>>>,
 }
 
-impl MemoryDatabase {
+impl UsersMemoryDatabase {
     pub fn new() -> Self {
         Self {
             users: Arc::new(Mutex::new(Vec::new())),
             fail: false,
-            answers: Arc::new(Mutex::new(HashMap::new())),
-            answer_statuses: Arc::new(Mutex::new(HashMap::new())),
-            scores: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -30,25 +24,12 @@ impl MemoryDatabase {
         Self {
             users: Arc::new(Mutex::new(Vec::new())),
             fail: true,
-            answers: Arc::new(Mutex::new(HashMap::new())),
-            answer_statuses: Arc::new(Mutex::new(HashMap::new())),
-            scores: Arc::new(Mutex::new(HashMap::new())),
-        }
-    }
-
-    pub fn with_users(users: Vec<User>) -> Self {
-        Self {
-            users: Arc::new(Mutex::new(users)),
-            fail: false,
-            answers: Arc::new(Mutex::new(HashMap::new())),
-            answer_statuses: Arc::new(Mutex::new(HashMap::new())),
-            scores: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
 
 #[derive(Error, Debug)]
-pub enum MemoryDatabaseError {
+pub enum UsersMemoryDatabaseError {
     #[error("failed to add user to database")]
     AddUserError,
     #[error("failed to get user from database")]
@@ -56,12 +37,12 @@ pub enum MemoryDatabaseError {
 }
 
 #[async_trait]
-impl UsersDatabase for MemoryDatabase {
-    type Error = MemoryDatabaseError;
+impl UsersDatabase for UsersMemoryDatabase {
+    type Error = UsersMemoryDatabaseError;
 
     async fn add_user(&self, user: User) -> Result<(), Self::Error> {
         if self.fail {
-            return Err(MemoryDatabaseError::AddUserError);
+            return Err(UsersMemoryDatabaseError::AddUserError);
         }
 
         let mut users = self.users.lock().await;
@@ -71,7 +52,7 @@ impl UsersDatabase for MemoryDatabase {
 
     async fn get_user(&self, username: &str) -> Result<Option<User>, Self::Error> {
         if self.fail {
-            return Err(MemoryDatabaseError::GetUserError);
+            return Err(UsersMemoryDatabaseError::GetUserError);
         }
 
         let users = self.users.lock().await;
@@ -81,9 +62,15 @@ impl UsersDatabase for MemoryDatabase {
             .find(|user| user.username == username))
     }
 }
+#[derive(Debug, Clone, Default)]
+pub struct GameMemoryDatabase {
+    answers: Arc<Mutex<HashMap<(String, String), OptionIndex>>>,
+    answer_statuses: Arc<Mutex<HashMap<(String, String), AnswerStatus>>>,
+    scores: Arc<Mutex<HashMap<String, u32>>>,
+}
 
 #[async_trait]
-impl GameDatabase for MemoryDatabase {
+impl GameDatabase for GameMemoryDatabase {
     type Error = String;
 
     async fn get_game(&self) -> Game {
