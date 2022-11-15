@@ -99,6 +99,9 @@ where
                 ))
                 .unwrap();
 
+                // wait for 10 seconds
+                tokio::time::sleep(Duration::from_secs(10)).await;
+
                 for question in game.questions.into_iter() {
                     // send question
                     let message = serde_json::to_string(&ServerMessage::Question {
