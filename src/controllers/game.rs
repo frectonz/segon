@@ -1,5 +1,5 @@
 use crate::{
-    models::{AnswerStatus, ClientMessage, ServerMessage, User},
+    models::{AnswerStatus, ClientMessage, ServerMessage},
     ports::{GameDatabase, GameStartNotifier, JobSchedular},
 };
 use futures_util::{future, Sink, Stream, StreamExt, TryStreamExt};
@@ -34,7 +34,7 @@ where
         }
     }
 
-    pub async fn start<Socket>(mut self, user: User, ws: Socket)
+    pub async fn start<Socket>(mut self, user_id: String, ws: Socket)
     where
         Socket: Stream<Item = Result<Message, warp::Error>> + Sink<Message>,
     {
@@ -59,13 +59,13 @@ where
                 match client_msg {
                     ClientMessage::Answer { answer_idx: answer } => {
                         let this = this.clone();
-                        let username = user.username.clone();
                         let current_question = current_question.clone();
                         let tx = tx.clone();
+                        let user_id = user_id.clone();
                         tokio::spawn(async move {
                             match &*current_question.lock().await {
                                 Some(question) => {
-                                    let _ = this.db.set_answer(&username, question, answer).await;
+                                    let _ = this.db.set_answer(&user_id, question, answer).await;
                                 }
                                 None => {
                                     tx.send(Message::text(
@@ -84,7 +84,7 @@ where
 
         let send_to_client = rx.map(Ok).forward(outgoing);
 
-        let username = user.username.clone();
+        let user_id = user_id.clone();
         let current_question = current_question.clone();
         let tx = tx.clone();
         let wait_for_game_to_start = tokio::spawn(async move {
@@ -118,7 +118,7 @@ where
                     tokio::time::sleep(Duration::from_secs(10)).await;
 
                     // get answer
-                    let answer = self.db.get_answer(&username, &question.question).await;
+                    let answer = self.db.get_answer(&user_id, &question.question).await;
                     let answer_status = match answer {
                         Some(answer) => {
                             if answer == question.answer_idx {
@@ -133,7 +133,7 @@ where
                     // set answer status
                     let _ = self
                         .db
-                        .set_answer_status(&username, &question.question, &answer_status)
+                        .set_answer_status(&user_id, &question.question, &answer_status)
                         .await;
 
                     // send answer
@@ -151,7 +151,7 @@ where
                 // calculate score
                 let score = self
                     .db
-                    .get_answers_statuses(&username)
+                    .get_answers_statuses(&user_id)
                     .await
                     .unwrap_or_default()
                     .iter()
@@ -159,7 +159,7 @@ where
                     .count() as u32;
 
                 // set score
-                let _ = self.db.set_score(&username, score).await;
+                let _ = self.db.set_score(&user_id, score).await;
 
                 tx.send(Message::text(
                     serde_json::to_string(&ServerMessage::GameEnd { score }).unwrap(),

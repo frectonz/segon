@@ -1,9 +1,9 @@
 use crate::{
-    models::{Game, User},
-    ports::{GameDatabase, UsersDatabase},
+    models::Game,
+    ports::{GameDatabase, UserModel, UsersDatabase},
 };
 use async_trait::async_trait;
-use redis::{aio::Connection, Client};
+use redis::{aio::Connection, Client, Value};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -28,31 +28,79 @@ impl RedisUsersDatabase {
 impl UsersDatabase for RedisUsersDatabase {
     type Error = redis::RedisError;
 
-    async fn add_user(&self, user: User) -> Result<(), Self::Error> {
+    async fn add_user(&self, user: UserModel) -> Result<(), Self::Error> {
         let connection = self.connection.clone();
         let mut connection = connection.lock().await;
-        let _: () = redis::cmd("SET")
-            .arg(user.username)
-            .arg(user.password)
+        Ok(redis::cmd("HSET")
+            .arg(format!("user:{}", user.id()))
+            .arg("username")
+            .arg(user.username())
+            .arg("password")
+            .arg(user.password())
             .query_async(&mut *connection)
-            .await?;
-
-        Ok(())
+            .await?)
     }
 
-    async fn get_user(&self, username: &str) -> Result<Option<User>, Self::Error> {
+    async fn get_user(&self, id: &str) -> Result<Option<UserModel>, Self::Error> {
         let connection = self.connection.clone();
         let mut connection = connection.lock().await;
-
-        let password: Option<String> = redis::cmd("GET")
-            .arg(username)
+        let data: Value = redis::cmd("HGETALL")
+            .arg(format!("user:{}", id))
             .query_async(&mut *connection)
             .await?;
 
-        Ok(password.map(|password| User {
-            username: username.to_string(),
-            password,
-        }))
+        match data {
+            Value::Bulk(values) if values.len() >= 5 => {
+                let username = string_from_redis_value(&values[1]);
+                let password = string_from_redis_value(&values[3]);
+
+                Ok(username
+                    .map(|username| {
+                        password.map(|password| UserModel::new(id.into(), username, password))
+                    })
+                    .flatten())
+            }
+            _ => Ok(None),
+        }
+    }
+
+    async fn get_by_username(&self, username: &str) -> Result<Option<UserModel>, Self::Error> {
+        let connection = self.connection.clone();
+        let mut connection = connection.lock().await;
+
+        let data: Value = redis::cmd("FT.SEARCH")
+            .arg("usernameIndex")
+            .arg(username)
+            .arg("LIMIT")
+            .arg("0")
+            .arg("1")
+            .query_async(&mut *connection)
+            .await?;
+
+        match data {
+            Value::Bulk(values) if values.len() >= 6 => {
+                let id = string_from_redis_value(&values[1]);
+                let username = string_from_redis_value(&values[3]);
+                let password = string_from_redis_value(&values[5]);
+
+                Ok(id
+                    .map(|id| {
+                        username.map(|username| {
+                            password.map(|password| UserModel::new(id, username, password))
+                        })
+                    })
+                    .flatten()
+                    .flatten())
+            }
+            _ => Ok(None),
+        }
+    }
+}
+
+fn string_from_redis_value(v: &Value) -> Option<String> {
+    match v {
+        Value::Data(d) => String::from_utf8(d.to_vec()).ok(),
+        _ => None,
     }
 }
 

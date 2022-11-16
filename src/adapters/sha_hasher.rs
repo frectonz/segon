@@ -7,12 +7,12 @@ pub struct ShaHasher;
 
 #[async_trait]
 impl Hasher for ShaHasher {
-    async fn hash_password(&self, password: &str) -> String {
+    async fn hash_password(password: &str) -> String {
         let params = Sha512Params::new(10_000).expect("RandomError!");
         sha512_simple(password, &params).expect("Should not fail")
     }
 
-    async fn compare_password(&self, plain: &str, password: &str) -> bool {
-        sha512_check(plain, password).is_ok()
+    async fn compare_password(plain_password: &str, hashed_password: &str) -> bool {
+        sha512_check(plain_password, hashed_password).is_ok()
     }
 }

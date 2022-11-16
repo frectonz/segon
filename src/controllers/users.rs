@@ -1,100 +1,99 @@
-use crate::models::User;
-use crate::ports::{Hasher, TokenGenerator, UsersDatabase};
+use crate::{
+    ports::{Hasher, IDGenerator, TokenGenerator, UserModel, UsersDatabase},
+    request::{LoginRequest, LoginValidationError, RegisterRequest, RegisterValidationError},
+};
+use std::marker::PhantomData;
 use thiserror::Error;
 
 #[derive(Clone)]
-pub struct UsersController<D, H, T>
+pub struct UsersController<D, H, T, I>
 where
     D: UsersDatabase,
     H: Hasher,
     T: TokenGenerator,
+    I: IDGenerator,
 {
     db: D,
-    hasher: H,
-    token_generator: T,
+    _data: (PhantomData<H>, PhantomData<T>, PhantomData<I>),
 }
 
-impl<D, H, T> UsersController<D, H, T>
+impl<D, H, T, I> UsersController<D, H, T, I>
 where
     D: UsersDatabase,
     H: Hasher,
     T: TokenGenerator,
+    I: IDGenerator,
 {
-    pub fn new(db: D, hasher: H, token_generator: T) -> Self {
+    pub fn new(db: D) -> Self {
         Self {
             db,
-            hasher,
-            token_generator,
+            _data: (PhantomData, PhantomData, PhantomData),
         }
     }
 
-    pub async fn register(&self, user: User) -> Result<String, RegistrationError> {
-        if let Ok(Some(_)) = self.db.get_user(&user.username).await {
+    pub async fn register(&self, request: RegisterRequest) -> Result<String, RegistrationError> {
+        let _ = request.validate()?;
+
+        let user = self
+            .db
+            .get_by_username(request.username())
+            .await
+            .or(Err(RegistrationError::DatabaseError))?;
+
+        if user.is_some() {
             return Err(RegistrationError::UsernameTaken);
         }
 
-        let hashed_password = self.hasher.hash_password(&user.password).await;
-        let token = self
-            .token_generator
-            .generate(&user.username)
-            .or(Err(RegistrationError::TokenGenerationError))?;
+        let id = I::generate().await;
+        let username = request.username().into();
+        let hashed_password = H::hash_password(request.password()).await;
+        let model = UserModel::new(id.clone(), username, hashed_password);
 
         self.db
-            .add_user(User {
-                username: user.username,
-                password: hashed_password,
-            })
+            .add_user(model)
             .await
             .or(Err(RegistrationError::DatabaseError))?;
-        Ok(token)
+
+        T::generate(&id).or(Err(RegistrationError::TokenGenerationError))
     }
 
-    pub async fn login(&self, user: User) -> Result<String, LoginError> {
-        let found_user = self
+    pub async fn login(&self, request: LoginRequest) -> Result<String, LoginError> {
+        let _ = request.validate()?;
+
+        let user = self
             .db
-            .get_user(&user.username)
+            .get_by_username(request.username())
             .await
-            .or(Err(LoginError::DatabaseError))?
+            .unwrap()
             .ok_or(LoginError::UserNotFound)?;
 
-        if self
-            .hasher
-            .compare_password(&user.password, &found_user.password.clone())
-            .await
-        {
-            let token = self
-                .token_generator
-                .generate(&user.username)
-                .or(Err(LoginError::TokenGenerationError))?;
-            Ok(token)
+        if H::compare_password(request.password(), user.password()).await {
+            T::generate(user.id()).or(Err(LoginError::TokenGenerationError))
         } else {
             Err(LoginError::IncorrectPassword)
         }
     }
 
-    pub async fn authorize(&self, token: String) -> Result<User, AuthorizationError> {
-        let claim = self
-            .token_generator
-            .get_claims(token)
-            .ok_or(AuthorizationError::InvalidToken)?;
+    pub async fn authorize(&self, token: String) -> Result<String, AuthorizationError> {
+        let claim = T::get_claims(&token).ok_or(AuthorizationError::InvalidToken)?;
 
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
 
-        if now > claim.iat + claim.exp {
+        if now > claim.iat() + claim.exp() {
             return Err(AuthorizationError::ExpiredToken);
         }
 
         let user = self
             .db
-            .get_user(&claim.sub)
+            .get_user(claim.sub())
             .await
             .or(Err(AuthorizationError::DatabaseError))?
             .ok_or(AuthorizationError::UserNotFound)?;
 
-        Ok(user)
+        Ok(user.id().into())
     }
 }
 
@@ -106,6 +105,8 @@ pub enum RegistrationError {
     UsernameTaken,
     #[error("token generation error")]
     TokenGenerationError,
+    #[error("validation error")]
+    RequestValidationError(#[from] RegisterValidationError),
 }
 
 #[derive(Error, Debug, PartialEq, Eq)]
@@ -118,6 +119,8 @@ pub enum LoginError {
     IncorrectPassword,
     #[error("token generation error")]
     TokenGenerationError,
+    #[error("validation error")]
+    RequestValidationError(#[from] LoginValidationError),
 }
 
 #[derive(Error, Debug, PartialEq, Eq)]
@@ -136,110 +139,114 @@ pub enum AuthorizationError {
 mod tests {
     use super::{LoginError, RegistrationError, UsersController};
     use crate::{
-        adapters::{Jwt, ShaHasher, UsersMemoryDatabase},
-        models::User,
+        adapters::{Jwt, ShaHasher, UsersMemoryDatabase, UuidGenerator},
+        request::{LoginRequest, RegisterRequest},
     };
 
-    fn sample_user() -> User {
-        User {
-            username: "Frectonz".into(),
-            password: "123".into(),
-        }
+    fn sample_register_request() -> RegisterRequest {
+        RegisterRequest::new("test".into(), "123".into())
     }
 
-    fn get_controller() -> UsersController<UsersMemoryDatabase, ShaHasher, Jwt> {
-        UsersController::new(UsersMemoryDatabase::new(), ShaHasher, Jwt)
+    fn sample_login_request() -> LoginRequest {
+        LoginRequest::new("test".into(), "123".into())
     }
 
-    fn get_failing_controller() -> UsersController<UsersMemoryDatabase, ShaHasher, Jwt> {
-        UsersController::new(UsersMemoryDatabase::failing(), ShaHasher, Jwt)
+    fn get_controller() -> UsersController<UsersMemoryDatabase, ShaHasher, Jwt, UuidGenerator> {
+        UsersController::new(UsersMemoryDatabase::new())
+    }
+
+    fn get_failing_controller(
+    ) -> UsersController<UsersMemoryDatabase, ShaHasher, Jwt, UuidGenerator> {
+        UsersController::new(UsersMemoryDatabase::failing())
     }
 
     #[tokio::test]
     async fn simple_registration() {
-        let user = sample_user();
+        let register_request = sample_register_request();
         let controller = get_controller();
 
-        let res = controller.register(user).await;
+        let res = controller.register(register_request).await;
         assert!(res.is_ok());
     }
 
     #[tokio::test]
     async fn failing_registration() {
-        let user = sample_user();
+        let register_request = sample_register_request();
         let controller = get_failing_controller();
 
-        let res = controller.register(user).await;
+        let res = controller.register(register_request).await;
         assert!(res.is_err());
         assert_eq!(res.err(), Some(RegistrationError::DatabaseError));
     }
 
     #[tokio::test]
     async fn can_not_register_with_an_existing_username() {
-        let user = sample_user();
+        let register_request = sample_register_request();
         let controller = get_controller();
 
-        let res = controller.register(user.clone()).await;
+        let res = controller.register(register_request.clone()).await;
         assert!(res.is_ok());
 
-        let res = controller.register(user).await;
+        let res = controller.register(register_request).await;
         assert!(res.is_err());
         assert_eq!(res.err(), Some(RegistrationError::UsernameTaken));
     }
 
     #[tokio::test]
     async fn register_and_login() {
-        let user = sample_user();
+        let register_request = sample_register_request();
         let controller = get_controller();
 
-        let res = controller.register(user.clone()).await;
+        let res = controller.register(register_request.clone()).await;
         assert!(res.is_ok());
 
-        let res = controller.login(user).await;
+        let login_request = register_request.into();
+        let res = controller.login(login_request).await;
         assert!(res.is_ok());
     }
 
     #[tokio::test]
     async fn failing_login() {
-        let user = sample_user();
+        let login_request = sample_login_request();
         let controller = get_failing_controller();
 
-        let res = controller.login(user).await;
+        let res = controller.login(login_request).await;
         assert!(res.is_err());
         assert_eq!(res.err(), Some(LoginError::DatabaseError));
     }
 
     #[tokio::test]
     async fn can_not_login_to_a_non_existent_account() {
-        let user = sample_user();
+        let login_request = sample_login_request();
         let controller = get_controller();
 
-        let res = controller.login(user).await;
+        let res = controller.login(login_request).await;
         assert!(res.is_err());
         assert_eq!(res.err(), Some(LoginError::UserNotFound));
     }
 
     #[tokio::test]
     async fn can_not_login_with_incorrect_password() {
-        let mut user = sample_user();
+        let mut register_request = sample_register_request();
         let controller = get_controller();
 
-        let res = controller.register(user.clone()).await;
+        let res = controller.register(register_request.clone()).await;
         assert!(res.is_ok());
 
-        user.password = "wrong".into();
+        register_request.set_password("wrong");
 
-        let res = controller.login(user).await;
+        let login_request = register_request.into();
+        let res = controller.login(login_request).await;
         assert!(res.is_err());
         assert_eq!(res.err(), Some(LoginError::IncorrectPassword));
     }
 
     #[tokio::test]
     async fn simple_authorization() {
-        let user = sample_user();
+        let register_request = sample_register_request();
         let controller = get_controller();
 
-        let res = controller.register(user).await;
+        let res = controller.register(register_request).await;
         assert!(res.is_ok());
 
         let token = res.unwrap();

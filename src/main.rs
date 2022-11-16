@@ -1,10 +1,11 @@
 use segon::{
-    adapters::{Jwt, Notifier, RedisUsersDatabase, Schedular, ShaHasher},
+    adapters::{Jwt, Notifier, RedisUsersDatabase, Schedular, ShaHasher, UuidGenerator},
     controllers::{GameController, UsersController},
     handlers::{
-        login_handler, register_handler, websocket_handler, with_game_controller,
+        login_handler, register_handler, websocket_handler, with_game_controller, with_json_body,
         with_users_controller,
     },
+    request::{LoginRequest, RegisterRequest},
 };
 use warp::Filter;
 
@@ -13,26 +14,25 @@ async fn main() {
     pretty_env_logger::init();
 
     let db = RedisUsersDatabase::new().await;
-    let users_controller = UsersController::new(db.clone(), ShaHasher, Jwt);
+    let users_controller: UsersController<RedisUsersDatabase, ShaHasher, Jwt, UuidGenerator> =
+        UsersController::new(db.clone());
 
     let notifier = Notifier::new();
     let schedular = Schedular::new(&notifier).await;
     let game_controller = GameController::new(db, schedular.clone(), notifier);
 
-    let json_body = warp::body::content_length_limit(1024 * 16).and(warp::body::json());
-
     // POST /register
     let register_route = warp::path("register")
         .and(warp::post())
         .and(with_users_controller(users_controller.clone()))
-        .and(json_body)
+        .and(with_json_body::<RegisterRequest>())
         .and_then(register_handler);
 
     // POST /login
     let login_route = warp::path("login")
         .and(warp::post())
         .and(with_users_controller(users_controller.clone()))
-        .and(json_body)
+        .and(with_json_body::<LoginRequest>())
         .and_then(login_handler);
 
     // GET /game -> websocket upgrade

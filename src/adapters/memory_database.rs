@@ -1,5 +1,5 @@
-use crate::models::{AnswerStatus, Game, OptionIndex, Question, User};
-use crate::ports::{GameDatabase, UsersDatabase};
+use crate::models::{AnswerStatus, Game, OptionIndex, Question};
+use crate::ports::{GameDatabase, UserModel, UsersDatabase};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, Default)]
 pub struct UsersMemoryDatabase {
-    users: Arc<Mutex<Vec<User>>>,
+    users: Arc<Mutex<Vec<UserModel>>>,
     fail: bool,
 }
 
@@ -40,7 +40,7 @@ pub enum UsersMemoryDatabaseError {
 impl UsersDatabase for UsersMemoryDatabase {
     type Error = UsersMemoryDatabaseError;
 
-    async fn add_user(&self, user: User) -> Result<(), Self::Error> {
+    async fn add_user(&self, user: UserModel) -> Result<(), Self::Error> {
         if self.fail {
             return Err(UsersMemoryDatabaseError::AddUserError);
         }
@@ -50,16 +50,25 @@ impl UsersDatabase for UsersMemoryDatabase {
         Ok(())
     }
 
-    async fn get_user(&self, username: &str) -> Result<Option<User>, Self::Error> {
+    async fn get_user(&self, id: &str) -> Result<Option<UserModel>, Self::Error> {
+        if self.fail {
+            return Err(UsersMemoryDatabaseError::GetUserError);
+        }
+
+        let users = self.users.lock().await;
+        Ok(users.iter().find(|user| user.id() == id).cloned())
+    }
+
+    async fn get_by_username(&self, username: &str) -> Result<Option<UserModel>, Self::Error> {
         if self.fail {
             return Err(UsersMemoryDatabaseError::GetUserError);
         }
 
         let users = self.users.lock().await;
         Ok(users
-            .clone()
-            .into_iter()
-            .find(|user| user.username == username))
+            .iter()
+            .find(|user| user.username() == username)
+            .cloned())
     }
 }
 #[derive(Debug, Clone, Default)]
@@ -102,28 +111,28 @@ impl GameDatabase for GameMemoryDatabase {
 
     async fn set_answer(
         &self,
-        username: &str,
+        id: &str,
         question: &str,
         answer: OptionIndex,
     ) -> Result<(), Self::Error> {
         let mut answers = self.answers.lock().await;
-        answers.insert((username.into(), question.into()), answer);
+        answers.insert((id.into(), question.into()), answer);
         Ok(())
     }
 
-    async fn get_answer(&self, username: &str, question: &str) -> Option<OptionIndex> {
+    async fn get_answer(&self, id: &str, question: &str) -> Option<OptionIndex> {
         let answers = self.answers.lock().await;
-        answers.get(&(username.into(), question.into())).cloned()
+        answers.get(&(id.into(), question.into())).cloned()
     }
 
     async fn set_answer_status(
         &self,
-        username: &str,
+        id: &str,
         question: &str,
         answer_status: &AnswerStatus,
     ) -> Result<(), Self::Error> {
         let mut answer_statuses = self.answer_statuses.lock().await;
-        answer_statuses.insert((username.into(), question.into()), answer_status.clone());
+        answer_statuses.insert((id.into(), question.into()), answer_status.clone());
         Ok(())
     }
 

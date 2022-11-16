@@ -16,15 +16,15 @@ pub enum JwtError {
 
 impl TokenGenerator for Jwt {
     type Error = JwtError;
-    fn generate(&self, username: &str) -> Result<String, Self::Error> {
-        let claims = Claims {
-            exp: 24 * 60 * 60,
-            iat: SystemTime::now()
+    fn generate(id: &str) -> Result<String, Self::Error> {
+        let claims = Claims::new(
+            24 * 60 * 60,
+            SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
-            sub: username.into(),
-        };
+            id.into(),
+        );
 
         let token = encode(
             &Header::default(),
@@ -35,12 +35,12 @@ impl TokenGenerator for Jwt {
         Ok(token)
     }
 
-    fn get_claims(&self, token: String) -> Option<Claims> {
+    fn get_claims(token: &str) -> Option<Claims> {
         let mut validation = Validation::default();
         validation.validate_exp = false;
 
         decode::<Claims>(
-            &token,
+            token,
             &DecodingKey::from_secret(SECRET.as_ref()),
             &validation,
         )
