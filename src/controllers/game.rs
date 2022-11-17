@@ -91,7 +91,6 @@ where
         let wait_for_game_to_start = tokio::spawn(async move {
             let tx = Arc::new(Mutex::new(tx));
             while let Some(()) = self.notifier.wait_for_signal().await {
-                println!("Game started");
                 let game = self.db.get_game().await;
                 let game = match game {
                     Ok(Some(game)) => game,

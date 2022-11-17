@@ -174,23 +174,19 @@ impl GameDatabase for RedisUsersDatabase {
             .query_async(&mut *c)
             .await?;
 
-        let answer_statuses = futures_util::stream::iter(answer_statuses);
-        use futures_util::stream::StreamExt;
-        let answer_statuses = answer_statuses
-            .map(|key| async move {
-                let c = self.connection.clone();
-                let mut c = c.lock().await;
-                let val: Option<String> = c.get(key).await.unwrap();
-                let val: Option<AnswerStatus> =
-                    val.map(|val| serde_json::from_str(&val).ok()).flatten();
-                val
-            })
-            .buffer_unordered(10);
+        let mut res = Vec::with_capacity(answer_statuses.len());
 
-        let answer_statuses = answer_statuses.collect::<Vec<_>>().await;
-        let answer_statuses = answer_statuses.into_iter().flatten().collect();
+        for answer_status in answer_statuses {
+            let val: Option<String> = c.get(answer_status).await.unwrap();
+            let val: Option<AnswerStatus> =
+                val.map(|val| serde_json::from_str(&val).ok()).flatten();
 
-        Ok(answer_statuses)
+            if val.is_some() {
+                res.push(val.unwrap());
+            }
+        }
+
+        Ok(res)
     }
 
     async fn set_score(&self, id: &str, score: u32) -> Result<(), Self::Error> {
