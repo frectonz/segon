@@ -43,11 +43,18 @@ where
         let rx = UnboundedReceiverStream::new(rx);
 
         let time = self.schedular.time_till_game().await;
-        let message = ServerMessage::TimeTillGame {
-            time: time.as_secs(),
-        };
-        let message = serde_json::to_string(&message).unwrap();
-        tx.send(Message::text(message)).unwrap();
+        match time {
+            Ok(time) => {
+                let message = ServerMessage::TimeTillGame {
+                    time: time.as_secs(),
+                };
+                let message = serde_json::to_string(&message).unwrap();
+                tx.send(Message::text(message)).unwrap();
+            }
+            Err(e) => {
+                dbg!(e);
+            }
+        }
 
         let current_question: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
@@ -182,7 +189,7 @@ where
             _ = receive_from_client => {}
             _ = wait_for_game_to_start => {}
             _ = send_to_client => {},
-        }
+        };
     }
 }
 

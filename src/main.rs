@@ -18,7 +18,7 @@ async fn main() {
         UsersController::new(db.clone());
 
     let notifier = Notifier::new();
-    let schedular = Schedular::new(&notifier).await;
+    let schedular = Schedular::new(notifier.clone()).await.unwrap();
     let game_controller = GameController::new(db, schedular.clone(), notifier);
 
     // POST /register

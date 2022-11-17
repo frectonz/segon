@@ -1,6 +1,6 @@
 use crate::ports::GameStartNotifier;
 use async_trait::async_trait;
-use tokio::sync::broadcast::{channel, Sender};
+use tokio::sync::broadcast::{channel, error::SendError, Sender};
 
 #[derive(Clone)]
 pub struct Notifier {
@@ -22,12 +22,14 @@ impl Default for Notifier {
 
 #[async_trait]
 impl GameStartNotifier for Notifier {
+    type Error = SendError<()>;
     async fn wait_for_signal(&self) -> Option<()> {
         let mut rx = self.sender.subscribe();
         rx.recv().await.ok()
     }
 
-    async fn send_signal(&self) {
-        self.sender.send(()).unwrap();
+    async fn send_signal(&self) -> Result<(), Self::Error> {
+        self.sender.send(())?;
+        Ok(())
     }
 }

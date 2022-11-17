@@ -1,7 +1,8 @@
 use async_trait::async_trait;
-use std::time::Duration;
+use std::{error::Error, time::Duration};
 
 #[async_trait]
 pub trait JobSchedular {
-    async fn time_till_game(&mut self) -> Duration;
+    type Error: Error + Send + Sync + 'static;
+    async fn time_till_game(&mut self) -> Result<Duration, Self::Error>;
 }
