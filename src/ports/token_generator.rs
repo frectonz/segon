@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::error::Error;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
@@ -28,7 +29,7 @@ impl Claims {
 
 #[async_trait]
 pub trait TokenGenerator {
-    type Error;
-    fn generate(id: &str) -> Result<String, Self::Error>;
-    fn get_claims(token: &str) -> Option<Claims>;
+    type Error: Error + Send + Sync + 'static;
+    async fn generate(id: String) -> Result<String, Self::Error>;
+    async fn get_claims(token: String) -> Result<Claims, Self::Error>;
 }

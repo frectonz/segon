@@ -54,7 +54,9 @@ where
             .await
             .or(Err(RegistrationError::DatabaseError))?;
 
-        T::generate(&id).or(Err(RegistrationError::TokenGenerationError))
+        T::generate(id)
+            .await
+            .or(Err(RegistrationError::TokenGenerationError))
     }
 
     pub async fn login(&self, request: LoginRequest) -> Result<String, LoginError> {
@@ -68,14 +70,18 @@ where
             .ok_or(LoginError::UserNotFound)?;
 
         if H::compare_password(request.password(), user.password()).await {
-            T::generate(user.id()).or(Err(LoginError::TokenGenerationError))
+            T::generate(user.id().into())
+                .await
+                .or(Err(LoginError::TokenGenerationError))
         } else {
             Err(LoginError::IncorrectPassword)
         }
     }
 
     pub async fn authorize(&self, token: String) -> Result<String, AuthorizationError> {
-        let claim = T::get_claims(&token).ok_or(AuthorizationError::InvalidToken)?;
+        let claim = T::get_claims(token)
+            .await
+            .or(Err(AuthorizationError::InvalidToken))?;
 
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
