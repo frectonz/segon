@@ -1,8 +1,9 @@
-use crate::models::{AnswerStatus, Game, OptionIndex, Question};
-use crate::ports::{GameDatabase, UserModel, UsersDatabase};
+use crate::{
+    models::{AnswerStatus, Game, OptionIndex, Question},
+    ports::{GameDatabase, UserModel, UsersDatabase},
+};
 use async_trait::async_trait;
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
 use tokio::sync::Mutex;
 
@@ -34,6 +35,8 @@ pub enum UsersMemoryDatabaseError {
     AddUserError,
     #[error("failed to get user from database")]
     GetUserError,
+    #[error("spawn error: {0}")]
+    SpawnError(#[from] tokio::task::JoinError),
 }
 
 #[async_trait]

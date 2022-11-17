@@ -1,7 +1,9 @@
 use async_trait::async_trait;
+use std::error::Error;
 
 #[async_trait]
 pub trait Hasher {
-    async fn hash_password(password: &str) -> String;
-    async fn compare_password(plain: &str, hashed: &str) -> bool;
+    type Error: Error + Send + Sync + 'static;
+    async fn hash_password(password: String) -> Result<String, Self::Error>;
+    async fn compare_password(plain: String, hashed: String) -> Result<bool, Self::Error>;
 }

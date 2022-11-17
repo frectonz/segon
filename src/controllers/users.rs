@@ -32,34 +32,33 @@ where
     }
 
     pub async fn register(&self, request: RegisterRequest) -> Result<String, RegistrationError> {
+        use RegistrationError::*;
         let _ = request.validate()?;
 
         let user = self
             .db
             .get_by_username(request.username())
             .await
-            .or(Err(RegistrationError::DatabaseError))?;
+            .or(Err(DatabaseError))?;
 
         if user.is_some() {
-            return Err(RegistrationError::UsernameTaken);
+            return Err(UsernameTaken);
         }
 
         let id = I::generate().await;
         let username = request.username().into();
-        let hashed_password = H::hash_password(request.password()).await;
+        let hashed_password = H::hash_password(request.password().into())
+            .await
+            .or(Err(HashError))?;
         let model = UserModel::new(id.clone(), username, hashed_password);
 
-        self.db
-            .add_user(model)
-            .await
-            .or(Err(RegistrationError::DatabaseError))?;
+        self.db.add_user(model).await.or(Err(DatabaseError))?;
 
-        T::generate(id)
-            .await
-            .or(Err(RegistrationError::TokenGenerationError))
+        T::generate(id).await.or(Err(TokenGenerationError))
     }
 
     pub async fn login(&self, request: LoginRequest) -> Result<String, LoginError> {
+        use LoginError::*;
         let _ = request.validate()?;
 
         let user = self
@@ -67,21 +66,23 @@ where
             .get_by_username(request.username())
             .await
             .unwrap()
-            .ok_or(LoginError::UserNotFound)?;
+            .ok_or(UserNotFound)?;
 
-        if H::compare_password(request.password(), user.password()).await {
+        if H::compare_password(request.password().into(), user.password().into())
+            .await
+            .or(Err(HashCompareError))?
+        {
             T::generate(user.id().into())
                 .await
-                .or(Err(LoginError::TokenGenerationError))
+                .or(Err(TokenGenerationError))
         } else {
-            Err(LoginError::IncorrectPassword)
+            Err(IncorrectPassword)
         }
     }
 
     pub async fn authorize(&self, token: String) -> Result<String, AuthorizationError> {
-        let claim = T::get_claims(token)
-            .await
-            .or(Err(AuthorizationError::InvalidToken))?;
+        use AuthorizationError::*;
+        let claim = T::get_claims(token).await.or(Err(InvalidToken))?;
 
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -89,15 +90,15 @@ where
             .as_secs();
 
         if now > claim.iat() + claim.exp() {
-            return Err(AuthorizationError::ExpiredToken);
+            return Err(ExpiredToken);
         }
 
         let user = self
             .db
             .get_user(claim.sub())
             .await
-            .or(Err(AuthorizationError::DatabaseError))?
-            .ok_or(AuthorizationError::UserNotFound)?;
+            .or(Err(DatabaseError))?
+            .ok_or(UserNotFound)?;
 
         Ok(user.id().into())
     }
@@ -109,6 +110,8 @@ pub enum RegistrationError {
     DatabaseError,
     #[error("requested username already exists")]
     UsernameTaken,
+    #[error("error while hashing the password")]
+    HashError,
     #[error("token generation error")]
     TokenGenerationError,
     #[error("validation error")]
@@ -123,6 +126,8 @@ pub enum LoginError {
     UserNotFound,
     #[error("the provided password is incorrect")]
     IncorrectPassword,
+    #[error("error while comparing the password")]
+    HashCompareError,
     #[error("token generation error")]
     TokenGenerationError,
     #[error("validation error")]
