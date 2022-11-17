@@ -17,5 +17,5 @@ futures-util = "0.3.25"
 tokio-stream = "0.1.11"
 jsonwebtoken = "8.1.1"
 tokio-cron-scheduler = "0.8.1"
-redis = { version = "0.22.1", features = ["tokio-comp"] }
+redis = { version = "0.22.1", features = ["tokio-comp", "json"] }
 uuid = { version = "1.2.2", features = ["v4", "fast-rng", "macro-diagnostics"] }

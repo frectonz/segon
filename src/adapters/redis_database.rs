@@ -1,9 +1,9 @@
 use crate::{
-    models::Game,
+    models::{AnswerStatus, Game},
     ports::{GameDatabase, UserModel, UsersDatabase},
 };
 use async_trait::async_trait;
-use redis::{aio::Connection, Client, Value};
+use redis::{aio::Connection, AsyncCommands, Client, JsonAsyncCommands, Value};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -50,7 +50,7 @@ impl UsersDatabase for RedisUsersDatabase {
             .await?;
 
         match data {
-            Value::Bulk(values) if values.len() >= 5 => {
+            Value::Bulk(values) if values.len() == 4 => {
                 let username = string_from_redis_value(&values[1]);
                 let password = string_from_redis_value(&values[3]);
 
@@ -78,7 +78,7 @@ impl UsersDatabase for RedisUsersDatabase {
             .await?;
 
         match data {
-            Value::Bulk(values) if values.len() >= 6 => {
+            Value::Bulk(values) if values.len() == 6 => {
                 let id = string_from_redis_value(&values[1]);
                 let username = string_from_redis_value(&values[3]);
                 let password = string_from_redis_value(&values[5]);
@@ -108,44 +108,97 @@ fn string_from_redis_value(v: &Value) -> Option<String> {
 impl GameDatabase for RedisUsersDatabase {
     type Error = redis::RedisError;
 
-    async fn get_game(&self) -> Game {
-        todo!()
+    async fn get_game(&self) -> Result<Option<Game>, Self::Error> {
+        let connection = self.connection.clone();
+        let mut connection = connection.lock().await;
+
+        let data: Value = connection.json_get("game:latest", ".").await.unwrap();
+
+        match data {
+            Value::Data(data) => {
+                let data = String::from_utf8(data.to_vec()).ok();
+                Ok(data.map(|data| serde_json::from_str(&data).ok()).flatten())
+            }
+            _ => Ok(None),
+        }
     }
 
     async fn set_answer(
         &self,
-        _username: &str,
-        _question: &str,
-        _answer: crate::models::OptionIndex,
+        id: &str,
+        question: &str,
+        answer: crate::models::OptionIndex,
     ) -> Result<(), Self::Error> {
-        todo!()
+        let connection = self.connection.clone();
+        let mut connection = connection.lock().await;
+        let answer = serde_json::to_string(&answer).unwrap();
+        connection
+            .set(format!("answer:{id}:{question}"), answer)
+            .await?;
+        Ok(())
     }
 
     async fn get_answer(
         &self,
-        _username: &str,
-        _question: &str,
-    ) -> Option<crate::models::OptionIndex> {
-        todo!()
+        id: &str,
+        question: &str,
+    ) -> Result<Option<crate::models::OptionIndex>, Self::Error> {
+        let connection = self.connection.clone();
+        let mut connection = connection.lock().await;
+        let answer: Option<String> = connection.get(format!("answer:{id}:{question}")).await?;
+        Ok(answer
+            .map(|answer| serde_json::from_str(&answer).ok())
+            .flatten())
     }
 
     async fn set_answer_status(
         &self,
-        _username: &str,
-        _question: &str,
-        _answer_status: &crate::models::AnswerStatus,
+        id: &str,
+        question: &str,
+        answer_status: &crate::models::AnswerStatus,
     ) -> Result<(), Self::Error> {
-        todo!()
+        let connection = self.connection.clone();
+        let mut connection = connection.lock().await;
+        let answer_status = serde_json::to_string(&answer_status).unwrap();
+        connection
+            .set(format!("answer_status:{id}:{question}"), answer_status)
+            .await?;
+        Ok(())
     }
 
-    async fn get_answers_statuses(
-        &self,
-        _username: &str,
-    ) -> Result<Vec<crate::models::AnswerStatus>, Self::Error> {
-        todo!()
+    async fn get_answers_statuses(&self, id: &str) -> Result<Vec<AnswerStatus>, Self::Error> {
+        let c = self.connection.clone();
+        let mut c = c.lock().await;
+        let answer_statuses: Vec<String> = redis::cmd("KEYS")
+            .arg(format!("answer_status:{id}:*"))
+            .query_async(&mut *c)
+            .await?;
+
+        let answer_statuses = futures_util::stream::iter(answer_statuses);
+        use futures_util::stream::StreamExt;
+        let answer_statuses = answer_statuses
+            .map(|key| async move {
+                let c = self.connection.clone();
+                let mut c = c.lock().await;
+                let val: Option<String> = c.get(key).await.unwrap();
+                let val: Option<AnswerStatus> =
+                    val.map(|val| serde_json::from_str(&val).ok()).flatten();
+                val
+            })
+            .buffer_unordered(10);
+
+        let answer_statuses = answer_statuses.collect::<Vec<_>>().await;
+        let answer_statuses = answer_statuses.into_iter().flatten().collect();
+
+        Ok(answer_statuses)
     }
 
-    async fn set_score(&self, _username: &str, _score: u32) -> Result<(), Self::Error> {
-        todo!()
+    async fn set_score(&self, id: &str, score: u32) -> Result<(), Self::Error> {
+        let connection = self.connection.clone();
+        let mut connection = connection.lock().await;
+        connection
+            .set(format!("score:{id}"), score.to_string())
+            .await?;
+        Ok(())
     }
 }

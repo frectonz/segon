@@ -41,15 +41,19 @@ pub trait UsersDatabase {
 
 #[async_trait]
 pub trait GameDatabase {
-    type Error;
-    async fn get_game(&self) -> Game;
+    type Error: Error + Send + Sync + 'static;
+    async fn get_game(&self) -> Result<Option<Game>, Self::Error>;
     async fn set_answer(
         &self,
         id: &str,
         question: &str,
         answer: OptionIndex,
     ) -> Result<(), Self::Error>;
-    async fn get_answer(&self, id: &str, question: &str) -> Option<OptionIndex>;
+    async fn get_answer(
+        &self,
+        id: &str,
+        question: &str,
+    ) -> Result<Option<OptionIndex>, Self::Error>;
     async fn set_answer_status(
         &self,
         id: &str,

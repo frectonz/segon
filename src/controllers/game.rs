@@ -64,15 +64,16 @@ where
                         let user_id = user_id.clone();
                         tokio::spawn(async move {
                             match &*current_question.lock().await {
-                                Some(question) => {
-                                    let _ = this.db.set_answer(&user_id, question, answer).await;
-                                }
-                                None => {
-                                    tx.send(Message::text(
+                                Some(question) => this
+                                    .db
+                                    .set_answer(&user_id, question, answer)
+                                    .await
+                                    .unwrap(),
+                                None => tx
+                                    .send(Message::text(
                                         serde_json::to_string(&ServerMessage::NoGame).unwrap(),
                                     ))
-                                    .unwrap();
-                                }
+                                    .unwrap(),
                             };
                         });
                     }
@@ -90,7 +91,13 @@ where
         let wait_for_game_to_start = tokio::spawn(async move {
             let tx = Arc::new(Mutex::new(tx));
             while let Some(()) = self.notifier.wait_for_signal().await {
+                println!("Game started");
                 let game = self.db.get_game().await;
+                let game = match game {
+                    Ok(Some(game)) => game,
+                    _ => break,
+                };
+
                 let tx = tx.lock().await;
 
                 // send a game start message
@@ -118,7 +125,11 @@ where
                     tokio::time::sleep(Duration::from_secs(10)).await;
 
                     // get answer
-                    let answer = self.db.get_answer(&user_id, &question.question).await;
+                    let answer = self
+                        .db
+                        .get_answer(&user_id, &question.question)
+                        .await
+                        .unwrap();
                     let answer_status = match answer {
                         Some(answer) => {
                             if answer == question.answer_idx {

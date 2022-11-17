@@ -80,10 +80,10 @@ pub struct GameMemoryDatabase {
 
 #[async_trait]
 impl GameDatabase for GameMemoryDatabase {
-    type Error = String;
+    type Error = std::convert::Infallible;
 
-    async fn get_game(&self) -> Game {
-        Game {
+    async fn get_game(&self) -> Result<Option<Game>, Self::Error> {
+        Ok(Some(Game {
             questions: vec![
                 Question {
                     question: "What is question 1?".into(),
@@ -106,7 +106,7 @@ impl GameDatabase for GameMemoryDatabase {
                     answer_idx: OptionIndex::One,
                 },
             ],
-        }
+        }))
     }
 
     async fn set_answer(
@@ -120,9 +120,13 @@ impl GameDatabase for GameMemoryDatabase {
         Ok(())
     }
 
-    async fn get_answer(&self, id: &str, question: &str) -> Option<OptionIndex> {
+    async fn get_answer(
+        &self,
+        id: &str,
+        question: &str,
+    ) -> Result<Option<OptionIndex>, Self::Error> {
         let answers = self.answers.lock().await;
-        answers.get(&(id.into(), question.into())).cloned()
+        Ok(answers.get(&(id.into(), question.into())).cloned())
     }
 
     async fn set_answer_status(

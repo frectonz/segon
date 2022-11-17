@@ -59,5 +59,5 @@ async function test(user: User) {
 }
 
 for (let i = 0; i < 10; i++) {
-  test({ username: `user-${i}`, password: "password" });
+  test({ username: `user${i}`, password: "password" });
 }
