@@ -13,10 +13,14 @@ use warp::Filter;
 async fn main() {
     pretty_env_logger::init();
 
-    let db = RedisUsersDatabase::new().await;
+    // init db
+    let db = RedisUsersDatabase::new().await.unwrap();
+
+    // init users controller
     let users_controller: UsersController<RedisUsersDatabase, ShaHasher, Jwt, UuidGenerator> =
         UsersController::new(db.clone());
 
+    // init game controller
     let notifier = Notifier::new();
     let schedular = Schedular::new(notifier.clone()).await.unwrap();
     let game_controller = GameController::new(db, schedular.clone(), notifier);

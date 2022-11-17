@@ -3,7 +3,7 @@ use crate::{
     ports::{GameDatabase, UserModel, UsersDatabase},
 };
 use async_trait::async_trait;
-use redis::{aio::Connection, AsyncCommands, Client, JsonAsyncCommands, Value};
+use redis::{aio::Connection, cmd, AsyncCommands, Client, JsonAsyncCommands, RedisError, Value};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -15,23 +15,23 @@ pub struct RedisUsersDatabase {
 }
 
 impl RedisUsersDatabase {
-    pub async fn new() -> Self {
-        let client = Client::open(REDIS_CONNECTION_STRING).unwrap();
-        let connection = client.get_async_connection().await.unwrap();
+    pub async fn new() -> Result<Self, RedisError> {
+        let client = Client::open(REDIS_CONNECTION_STRING)?;
+        let connection = client.get_async_connection().await?;
         let connection = Arc::new(Mutex::new(connection));
 
-        Self { connection }
+        Ok(Self { connection })
     }
 }
 
 #[async_trait]
 impl UsersDatabase for RedisUsersDatabase {
-    type Error = redis::RedisError;
+    type Error = RedisError;
 
     async fn add_user(&self, user: UserModel) -> Result<(), Self::Error> {
         let connection = self.connection.clone();
         let mut connection = connection.lock().await;
-        Ok(redis::cmd("HSET")
+        Ok(cmd("HSET")
             .arg(format!("user:{}", user.id()))
             .arg("username")
             .arg(user.username())
@@ -44,7 +44,7 @@ impl UsersDatabase for RedisUsersDatabase {
     async fn get_user(&self, id: &str) -> Result<Option<UserModel>, Self::Error> {
         let connection = self.connection.clone();
         let mut connection = connection.lock().await;
-        let data: Value = redis::cmd("HGETALL")
+        let data: Value = cmd("HGETALL")
             .arg(format!("user:{}", id))
             .query_async(&mut *connection)
             .await?;
@@ -106,13 +106,13 @@ fn string_from_redis_value(v: &Value) -> Option<String> {
 
 #[async_trait]
 impl GameDatabase for RedisUsersDatabase {
-    type Error = redis::RedisError;
+    type Error = RedisError;
 
     async fn get_game(&self) -> Result<Option<Game>, Self::Error> {
         let connection = self.connection.clone();
         let mut connection = connection.lock().await;
 
-        let data: Value = connection.json_get("game:latest", ".").await.unwrap();
+        let data: Value = connection.json_get("game:latest", ".").await?;
 
         match data {
             Value::Data(data) => {
@@ -131,7 +131,7 @@ impl GameDatabase for RedisUsersDatabase {
     ) -> Result<(), Self::Error> {
         let connection = self.connection.clone();
         let mut connection = connection.lock().await;
-        let answer = serde_json::to_string(&answer).unwrap();
+        let answer = serde_json::to_string(&answer)?;
         connection
             .set(format!("answer:{id}:{question}"), answer)
             .await?;
@@ -159,7 +159,7 @@ impl GameDatabase for RedisUsersDatabase {
     ) -> Result<(), Self::Error> {
         let connection = self.connection.clone();
         let mut connection = connection.lock().await;
-        let answer_status = serde_json::to_string(&answer_status).unwrap();
+        let answer_status = serde_json::to_string(&answer_status)?;
         connection
             .set(format!("answer_status:{id}:{question}"), answer_status)
             .await?;
@@ -177,13 +177,11 @@ impl GameDatabase for RedisUsersDatabase {
         let mut res = Vec::with_capacity(answer_statuses.len());
 
         for answer_status in answer_statuses {
-            let val: Option<String> = c.get(answer_status).await.unwrap();
+            let val: Option<String> = c.get(answer_status).await?;
             let val: Option<AnswerStatus> =
                 val.map(|val| serde_json::from_str(&val).ok()).flatten();
 
-            if val.is_some() {
-                res.push(val.unwrap());
-            }
+            val.map(|val| res.push(val));
         }
 
         Ok(res)

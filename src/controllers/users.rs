@@ -33,7 +33,7 @@ where
 
     pub async fn register(&self, request: RegisterRequest) -> Result<String, RegistrationError> {
         use RegistrationError::*;
-        let _ = request.validate()?;
+        request.validate()?;
 
         let user = self
             .db
@@ -59,7 +59,7 @@ where
 
     pub async fn login(&self, request: LoginRequest) -> Result<String, LoginError> {
         use LoginError::*;
-        let _ = request.validate()?;
+        request.validate()?;
 
         let user = self
             .db
