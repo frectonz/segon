@@ -39,6 +39,9 @@ pub enum ServerMessage {
         score: u32,
     },
     GameStart,
+    Error {
+        message: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]

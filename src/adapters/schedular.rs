@@ -42,10 +42,10 @@ impl Schedular {
 async fn notifier_callback<N: GameStartNotifier + Clone + Send + Sync + 'static>(notifier: N) {
     match notifier.send_signal().await {
         Ok(()) => {
-            log::info!("game start signal sent");
+            log::info!("Sent game start signal");
         }
         Err(e) => {
-            log::error!("error while sending game start signal: {}", e);
+            log::error!("Failed to send game start signal: {}", e);
         }
     };
 }

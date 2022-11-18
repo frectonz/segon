@@ -2,7 +2,7 @@ use crate::{
     models::{AnswerStatus, ClientMessage, ServerMessage},
     ports::{GameDatabase, GameStartNotifier, JobSchedular},
 };
-use futures_util::{future, Sink, Stream, StreamExt, TryStreamExt};
+use futures_util::{Sink, Stream, StreamExt, TryStreamExt};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::{mpsc::unbounded_channel, Mutex};
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -36,106 +36,157 @@ where
 
     pub async fn start<Socket>(mut self, user_id: String, ws: Socket)
     where
-        Socket: Stream<Item = Result<Message, warp::Error>> + Sink<Message>,
+        Socket: Stream<Item = Result<Message, warp::Error>> + Sink<Message> + Send + 'static,
     {
-        let (outgoing, incoming) = ws.split();
-        let (tx, rx) = unbounded_channel();
+        let (outgoing, mut incoming) = ws.split();
+        let (tx, rx) = unbounded_channel::<ServerMessage>();
         let rx = UnboundedReceiverStream::new(rx);
 
-        let time = self.schedular.time_till_game().await;
-        match time {
-            Ok(time) => {
-                let message = ServerMessage::TimeTillGame {
-                    time: time.as_secs(),
-                };
-                let message = serde_json::to_string(&message).unwrap();
-                tx.send(Message::text(message)).unwrap();
-            }
+        let time = self
+            .schedular
+            .time_till_game()
+            .await
+            .map(|time| time.as_secs());
+
+        let time = match time {
+            Ok(time) => time,
             Err(e) => {
-                dbg!(e);
+                log::error!("Failed to get time till game to {user_id}: {e}");
+                return;
             }
-        }
+        };
+
+        match tx.send(ServerMessage::TimeTillGame { time }) {
+            Ok(_) => (),
+            Err(e) => {
+                log::error!("Failed to send time till game to {user_id}: {e}");
+                return;
+            }
+        };
 
         let current_question: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
-        let this = self.clone();
-        let receive_from_client = incoming.try_for_each(|msg: Message| {
-            let msg = msg.to_str().map(serde_json::from_str::<ClientMessage>);
-
-            if let Ok(Ok(client_msg)) = msg {
-                match client_msg {
-                    ClientMessage::Answer { answer_idx: answer } => {
-                        let this = this.clone();
-                        let current_question = current_question.clone();
-                        let tx = tx.clone();
-                        let user_id = user_id.clone();
-                        tokio::spawn(async move {
-                            match &*current_question.lock().await {
-                                Some(question) => this
-                                    .db
-                                    .set_answer(&user_id, question, answer)
-                                    .await
-                                    .unwrap(),
-                                None => tx
-                                    .send(Message::text(
-                                        serde_json::to_string(&ServerMessage::NoGame).unwrap(),
-                                    ))
-                                    .unwrap(),
-                            };
-                        });
+        let this_clone = self.clone();
+        let current_question_clone = current_question.clone();
+        let tx_clone = tx.clone();
+        let user_id_clone = user_id.clone();
+        let receive_from_client = tokio::spawn(async move {
+            while let Ok(msg) = incoming.try_next().await {
+                let msg = match msg {
+                    Some(msg) => msg,
+                    None => {
+                        log::error!("Failed to receive message from {user_id_clone}");
+                        break;
                     }
-                }
-            };
+                };
 
-            future::ready(Ok(()))
+                let msg = match msg.to_str() {
+                    Ok(msg) => msg,
+                    Err(_) => {
+                        log::error!("Failed to get message from {user_id_clone}");
+                        break;
+                    }
+                };
+
+                let msg = match serde_json::from_str::<ClientMessage>(msg) {
+                    Ok(msg) => msg,
+                    Err(e) => {
+                        log::error!("Failed to parse message from {user_id_clone}: {e}");
+                        break;
+                    }
+                };
+
+                match msg {
+                    ClientMessage::Answer { answer_idx } => {
+                        match &*current_question_clone.lock().await {
+                            Some(question) => {
+                                match this_clone
+                                    .db
+                                    .set_answer(&user_id_clone, question, answer_idx)
+                                    .await
+                                {
+                                    Ok(()) => (),
+                                    Err(e) => {
+                                        log::error!(
+                                            "Failed to set answer for {user_id_clone}: {e}"
+                                        );
+                                        continue;
+                                    }
+                                }
+                            }
+                            None => {
+                                match tx_clone.send(ServerMessage::NoGame) {
+                                    Ok(()) => (),
+                                    Err(e) => {
+                                        log::error!("Failed to send no game message to {user_id_clone}: {e}");
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                };
+            }
         });
 
-        let send_to_client = rx.map(Ok).forward(outgoing);
+        let send_to_client = rx
+            .map(|msg| {
+                let msg = serde_json::to_string(&msg);
+                let msg = match msg {
+                    Ok(msg) => Message::text(msg),
+                    Err(_) => Message::text("MESSAGE_SERIALIZATION_ERROR"),
+                };
+                msg
+            })
+            .map(Ok)
+            .forward(outgoing);
 
-        let user_id = user_id.clone();
-        let current_question = current_question.clone();
-        let tx = tx.clone();
         let wait_for_game_to_start = tokio::spawn(async move {
-            let tx = Arc::new(Mutex::new(tx));
             while let Some(()) = self.notifier.wait_for_signal().await {
                 let game = self.db.get_game().await;
                 let game = match game {
                     Ok(Some(game)) => game,
-                    _ => break,
+                    _ => {
+                        log::error!("Failed to get game");
+                        break;
+                    }
                 };
 
-                let tx = tx.lock().await;
+                match tx.send(ServerMessage::GameStart) {
+                    Ok(()) => (),
+                    Err(e) => {
+                        log::error!("Failed to send game start message to {user_id}: {e}");
+                        break;
+                    }
+                };
 
-                // send a game start message
-                tx.send(Message::text(
-                    serde_json::to_string(&ServerMessage::GameStart).unwrap(),
-                ))
-                .unwrap();
-
-                // wait for 10 seconds
                 tokio::time::sleep(Duration::from_secs(10)).await;
 
                 for question in game.questions.into_iter() {
-                    // send question
-                    let message = serde_json::to_string(&ServerMessage::Question {
+                    match tx.send(ServerMessage::Question {
                         question: question.question.clone(),
                         options: question.options,
-                    })
-                    .unwrap();
-                    tx.send(Message::text(message)).unwrap();
+                    }) {
+                        Ok(()) => (),
+                        Err(e) => {
+                            log::error!("Failed to send question to {user_id}: {e}");
+                            continue;
+                        }
+                    };
 
-                    // set current question
                     *current_question.lock().await = Some(question.question.clone());
 
-                    // sleep for 10 seconds
                     tokio::time::sleep(Duration::from_secs(10)).await;
 
-                    // get answer
-                    let answer = self
-                        .db
-                        .get_answer(&user_id, &question.question)
-                        .await
-                        .unwrap();
+                    let answer = self.db.get_answer(&user_id, &question.question).await;
+                    let answer = match answer {
+                        Ok(answer) => answer,
+                        Err(e) => {
+                            log::error!("Failed to get answer for {user_id}: {e}");
+                            continue;
+                        }
+                    };
+
                     let answer_status = match answer {
                         Some(answer) => {
                             if answer == question.answer_idx {
@@ -147,25 +198,32 @@ where
                         None => AnswerStatus::NoAnswer,
                     };
 
-                    // set answer status
-                    let _ = self
+                    match self
                         .db
                         .set_answer_status(&user_id, &question.question, &answer_status)
-                        .await;
+                        .await
+                    {
+                        Ok(_) => (),
+                        Err(e) => {
+                            log::error!("Failed to set answer status for {user_id}: {e}");
+                            continue;
+                        }
+                    };
 
-                    // send answer
-                    let message = serde_json::to_string(&ServerMessage::Answer {
+                    match tx.send(ServerMessage::Answer {
                         status: answer_status,
                         answer_idx: question.answer_idx,
-                    })
-                    .unwrap();
-                    tx.send(Message::text(message)).unwrap();
+                    }) {
+                        Ok(_) => (),
+                        Err(e) => {
+                            log::error!("Failed to send answer for {user_id}: {e}");
+                            continue;
+                        }
+                    };
 
-                    // sleep for 10 seconds
                     tokio::time::sleep(Duration::from_secs(10)).await;
                 }
 
-                // calculate score
                 let score = self
                     .db
                     .get_answers_statuses(&user_id)
@@ -175,13 +233,21 @@ where
                     .filter(|x| **x == AnswerStatus::Correct)
                     .count() as u32;
 
-                // set score
-                let _ = self.db.set_score(&user_id, score).await;
+                match self.db.set_score(&user_id, score).await {
+                    Ok(_) => (),
+                    Err(e) => {
+                        log::error!("Failed to set score for {user_id}: {e}");
+                        continue;
+                    }
+                };
 
-                tx.send(Message::text(
-                    serde_json::to_string(&ServerMessage::GameEnd { score }).unwrap(),
-                ))
-                .unwrap();
+                match tx.send(ServerMessage::GameEnd { score }) {
+                    Ok(_) => (),
+                    Err(e) => {
+                        log::error!("Failed to send game end message to {user_id}: {e}");
+                        continue;
+                    }
+                };
             }
         });
 

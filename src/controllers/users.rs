@@ -65,7 +65,7 @@ where
             .db
             .get_by_username(request.username())
             .await
-            .unwrap()
+            .or(Err(DatabaseError))?
             .ok_or(UserNotFound)?;
 
         if H::compare_password(request.password().into(), user.password().into())
@@ -86,7 +86,7 @@ where
 
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .or(Err(SystemTimeError))?
             .as_secs();
 
         if now > claim.iat() + claim.exp() {
@@ -144,6 +144,8 @@ pub enum AuthorizationError {
     InvalidToken,
     #[error("token has expired")]
     ExpiredToken,
+    #[error("couldn't get system time")]
+    SystemTimeError,
 }
 
 #[cfg(test)]
