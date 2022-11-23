@@ -1,5 +1,7 @@
 use segon::{
-    adapters::{Jwt, Notifier, RedisUsersDatabase, Schedular, ShaHasher, UuidGenerator},
+    adapters::{
+        GameMemoryDatabase, Jwt, Notifier, Schedular, ShaHasher, UsersMemoryDatabase, UuidGenerator,
+    },
     controllers::{GameController, UsersController},
     handlers::{
         login_handler, register_handler, websocket_handler, with_game_controller, with_json_body,
@@ -14,16 +16,17 @@ async fn main() {
     pretty_env_logger::init();
 
     // init db
-    let db = RedisUsersDatabase::new().await.unwrap();
+    // let db = RedisUsersDatabase::new().await.unwrap();
 
     // init users controller
-    let users_controller: UsersController<RedisUsersDatabase, ShaHasher, Jwt, UuidGenerator> =
-        UsersController::new(db.clone());
+    let users_controller: UsersController<UsersMemoryDatabase, ShaHasher, Jwt, UuidGenerator> =
+        UsersController::new(UsersMemoryDatabase::new());
 
     // init game controller
     let notifier = Notifier::new();
     let schedular = Schedular::new(notifier.clone()).await.unwrap();
-    let game_controller = GameController::new(db, schedular.clone(), notifier);
+    let game_controller =
+        GameController::new(GameMemoryDatabase::default(), schedular.clone(), notifier);
 
     // POST /register
     let register_route = warp::path("register")
@@ -47,7 +50,9 @@ async fn main() {
         .and(warp::path::param())
         .and_then(websocket_handler);
 
-    let routes = register_route.or(login_route).or(chat);
+    // Serve build directory
+    let serve = warp::fs::dir("client/build");
 
+    let routes = register_route.or(login_route).or(chat).or(serve);
     warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
 }

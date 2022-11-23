@@ -1,0 +1,13 @@
+{
+  "name": "segon-client",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "elm-watch hot",
+    "build": "elm make src/Main.elm --output=build/main.js"
+  },
+  "devDependencies": {
+    "elm": "0.19.1-5",
+    "elm-watch": "^1.1.0"
+  }
+}
