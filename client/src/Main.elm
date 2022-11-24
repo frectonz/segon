@@ -1,7 +1,6 @@
 port module Main exposing (..)
 
 import Browser
-import Browser.Dom exposing (Error(..))
 import Browser.Navigation as Nav
 import Html exposing (..)
 import Html.Attributes exposing (..)
@@ -9,6 +8,7 @@ import Html.Events exposing (onClick, onInput)
 import Http
 import Json.Decode as Decode exposing (Decoder, field)
 import Json.Encode as Encode
+import List.Extra exposing (zip)
 import Time
 import Url
 
@@ -39,6 +39,9 @@ port connectToGameServer : String -> Cmd msg
 port receiveGameServerMessage : (Decode.Value -> msg) -> Sub msg
 
 
+port sendAnswerToGameServer : Encode.Value -> Cmd msg
+
+
 
 -- MODEL
 
@@ -48,17 +51,11 @@ type alias Model =
 
 
 type AuthenticationState
-    = LoggedIn { token : String, gameState : GameState }
+    = LoggedIn { token : String, serverMessage : ServerMessage }
     | LoggedOut
         { username : String
         , password : String
         }
-
-
-type GameState
-    = Unknown
-    | Waiting Int
-    | GameStarted
 
 
 init : () -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
@@ -80,6 +77,7 @@ type Msg
     | GotLoginResult (Result Http.Error AuthResponse)
     | GotGameServerMessage Decode.Value
     | Tick Time.Posix
+    | SendAnswer String
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -123,7 +121,7 @@ update msg model =
         GotRegisterResult result ->
             case result of
                 Ok { token } ->
-                    ( Model (LoggedIn { token = token, gameState = Unknown }), connectToGameServer token )
+                    ( Model (LoggedIn { token = token, serverMessage = Unknown }), connectToGameServer token )
 
                 Err _ ->
                     ( model, Cmd.none )
@@ -131,15 +129,15 @@ update msg model =
         GotLoginResult result ->
             case result of
                 Ok { token } ->
-                    ( Model (LoggedIn { token = token, gameState = Unknown }), connectToGameServer token )
+                    ( Model (LoggedIn { token = token, serverMessage = Unknown }), connectToGameServer token )
 
                 Err _ ->
                     ( model, Cmd.none )
 
         GotGameServerMessage val ->
-            case ( Decode.decodeValue decodeTimeTillGame val, model.state ) of
-                ( Ok (TimeTillGame time), LoggedIn m ) ->
-                    ( Model (LoggedIn { m | gameState = Waiting time }), Cmd.none )
+            case ( model.state, Decode.decodeValue decodeServerMessage val ) of
+                ( LoggedIn m, Ok serverMessage ) ->
+                    ( Model (LoggedIn { m | serverMessage = serverMessage }), Cmd.none )
 
                 _ ->
                     ( model, Cmd.none )
@@ -150,21 +148,34 @@ update msg model =
                     ( Model
                         (LoggedIn
                             { m
-                                | gameState =
-                                    case m.gameState of
-                                        Waiting time ->
+                                | serverMessage =
+                                    case m.serverMessage of
+                                        TimeTillGame time ->
                                             if time > 0 then
-                                                Waiting (time - 1)
+                                                TimeTillGame (time - 1)
 
                                             else
-                                                GameStarted
+                                                TimeTillGame 0
 
                                         _ ->
-                                            m.gameState
+                                            m.serverMessage
                             }
                         )
                     , Cmd.none
                     )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        SendAnswer answer ->
+            case model.state of
+                LoggedIn _ ->
+                    let
+                        encodedAnswer =
+                            Encode.object
+                                [ ( "answer_idx", Encode.string answer ) ]
+                    in
+                    ( model, sendAnswerToGameServer encodedAnswer )
 
                 _ ->
                     ( model, Cmd.none )
@@ -175,9 +186,12 @@ update msg model =
 
 
 type ServerMessage
-    = TimeTillGame Int
+    = Unknown
+    | TimeTillGame Int
     | GameStart
     | GotQuestion Question
+    | GotAnswer Answer
+    | GameEnd Int
 
 
 type alias Question =
@@ -186,43 +200,43 @@ type alias Question =
     }
 
 
+type alias Answer =
+    { status : String
+    , answer : String
+    }
+
+
 decodeServerMessage : Decoder ServerMessage
 decodeServerMessage =
-    Decode.oneOf
-        [ decodeTimeTillGame
-        , decodeGameStart
-        ]
-
-
-decodeTimeTillGame : Decoder ServerMessage
-decodeTimeTillGame =
-    field "type" (Decode.succeed "TimeTillGame")
+    field "type" Decode.string
         |> Decode.andThen
-            (\_ ->
-                Decode.map TimeTillGame
-                    (field "time" Decode.int)
-            )
+            (\msgType ->
+                case msgType of
+                    "TimeTillGame" ->
+                        field "time" Decode.int
+                            |> Decode.map TimeTillGame
 
+                    "GameStart" ->
+                        Decode.succeed GameStart
 
-decodeGameStart : Decoder ServerMessage
-decodeGameStart =
-    field "type" (Decode.succeed "GameStart")
-        |> Decode.andThen
-            (\_ ->
-                Decode.succeed GameStart
-            )
+                    "Question" ->
+                        Decode.map2 Question
+                            (field "question" Decode.string)
+                            (field "options" (Decode.list Decode.string))
+                            |> Decode.map GotQuestion
 
+                    "Answer" ->
+                        Decode.map2 Answer
+                            (field "status" Decode.string)
+                            (field "answer_idx" Decode.string)
+                            |> Decode.map GotAnswer
 
-decodeQuestion : Decoder ServerMessage
-decodeQuestion =
-    field "type" (Decode.succeed "Question")
-        |> Decode.andThen
-            (\_ ->
-                Decode.map GotQuestion
-                    (Decode.map2 Question
-                        (field "question" Decode.string)
-                        (field "options" (Decode.list Decode.string))
-                    )
+                    "GameEnd" ->
+                        field "score" Decode.int
+                            |> Decode.map GameEnd
+
+                    _ ->
+                        Decode.fail "Unknown message type"
             )
 
 
@@ -284,8 +298,13 @@ subscriptions { state } =
     let
         ticker =
             case state of
-                LoggedIn _ ->
-                    Time.every 1000 Tick
+                LoggedIn { serverMessage } ->
+                    case serverMessage of
+                        TimeTillGame _ ->
+                            Time.every 1000 Tick
+
+                        _ ->
+                            Sub.none
 
                 _ ->
                     Sub.none
@@ -314,24 +333,42 @@ view model =
     }
 
 
-viewLoggedIn : { a | token : String, gameState : GameState } -> Html msg
-viewLoggedIn { token, gameState } =
+viewLoggedIn : { a | token : String, serverMessage : ServerMessage } -> Html Msg
+viewLoggedIn { token, serverMessage } =
     div []
         [ h1 [] [ text "Logged in" ]
-        , p [] [ pre [] [ text token ] ]
-        , p []
-            [ text
-                (case gameState of
-                    Unknown ->
-                        "Unknown"
+        , pre [] [ text token ]
+        , div []
+            (case serverMessage of
+                Unknown ->
+                    [ "Unknown" |> text ]
 
-                    Waiting time ->
-                        "Waiting " ++ String.fromInt time
+                TimeTillGame time ->
+                    [ "Waiting " ++ String.fromInt time |> text ]
 
-                    GameStarted ->
-                        "Game started"
-                )
-            ]
+                GameStart ->
+                    [ "Game started" |> text ]
+
+                GotQuestion { question, options } ->
+                    [ text question
+                    , div []
+                        (options
+                            |> zip [ "One", "Two", "Three", "Four" ]
+                            |> List.map
+                                (\( idx, opt ) ->
+                                    button [ onClick (SendAnswer idx) ] [ text opt ]
+                                )
+                        )
+                    ]
+
+                GotAnswer { status, answer } ->
+                    [ p [] [ "Answer status: " ++ status |> text ]
+                    , p [] [ "Answer index: " ++ answer |> text ]
+                    ]
+
+                GameEnd score ->
+                    [ "Game ended. Score: " ++ String.fromInt score |> text ]
+            )
         ]
 
 
