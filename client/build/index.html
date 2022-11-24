@@ -10,8 +10,22 @@
   <div id="app"></div>
   <script src="main.js"></script>
   <script defer>
-    Elm.Main.init({
+    const app = Elm.Main.init({
       node: document.getElementById('app'),
+    });
+
+    let ws;
+    app.ports.connectToGameServer.subscribe((token) => {
+      ws = new WebSocket(`ws://localhost:3030/game/${token}`);
+      ws.addEventListener("open", () => {
+        console.log("Connected to game server", token);
+      });
+
+      ws.addEventListener("message", (event) => {
+        const data = JSON.parse(event.data);
+        console.log(data);
+        app.ports.receiveGameServerMessage.send(data);
+      });
     });
   </script>
 </body>

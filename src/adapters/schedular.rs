@@ -26,7 +26,7 @@ impl Schedular {
     ) -> Result<Self, tokio_cron_scheduler::JobSchedulerError> {
         let schedular = tokio_cron_scheduler::JobScheduler::new().await?;
 
-        let game_start_job = Job::new_async("1/30 * * * * *", move |_, _| {
+        let game_start_job = Job::new_async("1/100 * * * * *", move |_, _| {
             let notifier = notifier.clone();
             Box::pin(notifier_callback(notifier))
         })?;
