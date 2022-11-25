@@ -39,7 +39,7 @@ port connectToGameServer : String -> Cmd msg
 port receiveGameServerMessage : (Decode.Value -> msg) -> Sub msg
 
 
-port sendAnswerToGameServer : Encode.Value -> Cmd msg
+port sendGameServerMessage : Encode.Value -> Cmd msg
 
 
 
@@ -173,9 +173,11 @@ update msg model =
                     let
                         encodedAnswer =
                             Encode.object
-                                [ ( "answer_idx", Encode.string answer ) ]
+                                [ ( "type", Encode.string "Answer" )
+                                , ( "answer_idx", Encode.string answer )
+                                ]
                     in
-                    ( model, sendAnswerToGameServer encodedAnswer )
+                    ( model, sendGameServerMessage encodedAnswer )
 
                 _ ->
                     ( model, Cmd.none )

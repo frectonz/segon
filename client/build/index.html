@@ -14,8 +14,9 @@
       node: document.getElementById('app'),
     });
 
+    let ws;
     app.ports.connectToGameServer.subscribe((token) => {
-      const ws = new WebSocket(`ws://localhost:3030/game/${token}`);
+      ws = new WebSocket(`ws://localhost:3030/game/${token}`);
       ws.addEventListener("open", () => {
         console.log("Connected to game server", token);
       });
@@ -24,10 +25,10 @@
         const data = JSON.parse(event.data);
         app.ports.receiveGameServerMessage.send(data);
       });
+    });
 
-      app.ports.sendGameServerMessage.subscribe((data) => {
-        ws.send(JSON.stringify(data));
-      });
+    app.ports.sendGameServerMessage.subscribe((data) => {
+      ws.send(JSON.stringify(data));
     });
   </script>
 </body>
