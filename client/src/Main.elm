@@ -249,7 +249,7 @@ decodeServerMessage =
 register : String -> String -> Cmd Msg
 register username password =
     Http.post
-        { url = "/register"
+        { url = "http://localhost:3030/register"
         , body =
             encodeUsernameAndPassword
                 { username = username, password = password }
@@ -261,7 +261,7 @@ register username password =
 login : String -> String -> Cmd Msg
 login username password =
     Http.post
-        { url = "/login"
+        { url = "http://localhost:3030/login"
         , body =
             encodeUsernameAndPassword
                 { username = username, password = password }
