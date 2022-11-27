@@ -2,12 +2,14 @@
   "name": "segon-client",
   "private": true,
   "version": "0.0.0",
+  "type": "module",
   "scripts": {
-    "dev": "elm-watch hot",
-    "build": "elm make src/Main.elm --output=build/main.js"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "devDependencies": {
-    "elm": "0.19.1-5",
-    "elm-watch": "^1.1.0"
+    "vite": "^3.2.4",
+    "vite-plugin-elm": "^2.7.2"
   }
 }
