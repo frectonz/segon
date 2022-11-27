@@ -377,7 +377,7 @@ viewLoggedIn { token, serverMessage } =
 viewLoggedOut : { a | username : String, password : String } -> Html Msg
 viewLoggedOut { username, password } =
     div []
-        [ h1 [] [ text "Logged out" ]
+        [ h1 [ class "text-green-600" ] [ text "Logged out" ]
         , input [ onInput UpadteUsername, value username ] []
         , br [] []
         , input [ onInput UpdatePassword, value password ] []
