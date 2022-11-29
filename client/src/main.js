@@ -1,5 +1,6 @@
 import "./index.css";
 import { Elm } from "./Main.elm";
+import confetti from "canvas-confetti";
 
 const app = Elm.Main.init({
   node: document.getElementById("app"),
@@ -20,4 +21,8 @@ app.ports.connectToGameServer.subscribe((token) => {
 
 app.ports.sendGameServerMessage.subscribe((data) => {
   ws.send(JSON.stringify(data));
+});
+
+app.ports.confetti.subscribe((data) => {
+  confetti();
 });

@@ -42,6 +42,9 @@ port receiveGameServerMessage : (Decode.Value -> msg) -> Sub msg
 port sendGameServerMessage : Encode.Value -> Cmd msg
 
 
+port confetti : () -> Cmd msg
+
+
 
 -- MODEL
 
@@ -121,7 +124,9 @@ update msg model =
         GotRegisterResult result ->
             case result of
                 Ok { token } ->
-                    ( Model (LoggedIn { token = token, serverMessage = Unknown }), connectToGameServer token )
+                    ( Model (LoggedIn { token = token, serverMessage = Unknown })
+                    , Cmd.batch [ connectToGameServer token, confetti () ]
+                    )
 
                 Err _ ->
                     ( model, Cmd.none )
@@ -129,7 +134,9 @@ update msg model =
         GotLoginResult result ->
             case result of
                 Ok { token } ->
-                    ( Model (LoggedIn { token = token, serverMessage = Unknown }), connectToGameServer token )
+                    ( Model (LoggedIn { token = token, serverMessage = Unknown })
+                    , Cmd.batch [ connectToGameServer token, confetti () ]
+                    )
 
                 Err _ ->
                     ( model, Cmd.none )
@@ -346,9 +353,9 @@ viewLoggedIn { serverMessage } =
 
                 TimeTillGame time ->
                     [ div
-                        [ class "text-center p-20 bg-transparent shadow-lg rounded-full w-fit text-white animate-pulse border-2 border-fuchsia-800"
+                        [ class "text-center bg-transparent shadow-lg rounded-full text-white animate-pulse border-2 border-fuchsia-800 w-[200px] h-[200px] flex justify-center items-center flex-col"
                         ]
-                        [ p [ class "text-[5rem]" ] [ String.fromInt time |> text ]
+                        [ p [ class "text-[4rem]" ] [ String.fromInt time |> text ]
                         , p [] [ text "seconds till game" ]
                         ]
                     ]

@@ -2,10 +2,14 @@ lockfileVersion: 5.4
 
 specifiers:
   autoprefixer: ^10.4.13
+  canvas-confetti: ^1.6.0
   postcss: ^8.4.19
   tailwindcss: ^3.2.4
   vite: ^3.2.4
   vite-plugin-elm: ^2.7.2
+
+dependencies:
+  canvas-confetti: 1.6.0
 
 devDependencies:
   autoprefixer: 10.4.13_postcss@8.4.19
@@ -155,6 +159,10 @@ packages:
   /caniuse-lite/1.0.30001434:
     resolution: {integrity: sha512-aOBHrLmTQw//WFa2rcF1If9fa3ypkC1wzqqiKHgfdrXTWcU8C4gKVZT77eQAPWN1APys3+uQ0Df07rKauXGEYA==}
     dev: true
+
+  /canvas-confetti/1.6.0:
+    resolution: {integrity: sha512-ej+w/m8Jzpv9Z7W7uJZer14Ke8P2ogsjg4ZMGIuq4iqUOqY2Jq8BNW42iGmNfRwREaaEfFIczLuZZiEVSYNHAA==}
+    dev: false
 
   /chokidar/3.5.3:
     resolution: {integrity: sha512-Dr3sfKRP6oTcjf2JmUmFJfeVMvXBdegxB0iVQ5eb2V10uFJUCAS8OByZdVAyVb8xXNz3GjjTgj9kLWsZTqE6kw==}
