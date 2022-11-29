@@ -54,10 +54,9 @@ impl UsersDatabase for RedisUsersDatabase {
                 let username = string_from_redis_value(&values[1]);
                 let password = string_from_redis_value(&values[3]);
 
-                Ok(username
-                    .and_then(|username| {
-                        password.map(|password| UserModel::new(id.into(), username, password))
-                    }))
+                Ok(username.and_then(|username| {
+                    password.map(|password| UserModel::new(id.into(), username, password))
+                }))
             }
             _ => Ok(None),
         }
@@ -144,8 +143,7 @@ impl GameDatabase for RedisUsersDatabase {
         let connection = self.connection.clone();
         let mut connection = connection.lock().await;
         let answer: Option<String> = connection.get(format!("answer:{id}:{question}")).await?;
-        Ok(answer
-            .and_then(|answer| serde_json::from_str(&answer).ok()))
+        Ok(answer.and_then(|answer| serde_json::from_str(&answer).ok()))
     }
 
     async fn set_answer_status(
@@ -175,10 +173,11 @@ impl GameDatabase for RedisUsersDatabase {
 
         for answer_status in answer_statuses {
             let val: Option<String> = c.get(answer_status).await?;
-            let val: Option<AnswerStatus> =
-                val.and_then(|val| serde_json::from_str(&val).ok());
+            let val: Option<AnswerStatus> = val.and_then(|val| serde_json::from_str(&val).ok());
 
-            if let Some(val) = val { res.push(val) }
+            if let Some(val) = val {
+                res.push(val)
+            }
         }
 
         Ok(res)
