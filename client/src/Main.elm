@@ -54,7 +54,11 @@ type alias Model =
 
 
 type AuthenticationState
-    = LoggedIn { token : String, serverMessage : ServerMessage }
+    = LoggedIn
+        { token : String
+        , serverMessage : ServerMessage
+        , answer : Maybe String
+        }
     | LoggedOut
         { username : String
         , password : String
@@ -63,7 +67,19 @@ type AuthenticationState
 
 init : () -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
 init _ _ _ =
-    ( Model (LoggedOut { username = "", password = "" }), Cmd.none )
+    ( Model
+        (LoggedIn
+            { token = ""
+            , answer = Nothing
+            , serverMessage =
+                GotQuestion
+                    { question = "What is question?"
+                    , options = [ "Option 1", "Option 2", "Option 3", "Option 4" ]
+                    }
+            }
+        )
+    , Cmd.none
+    )
 
 
 
@@ -124,7 +140,7 @@ update msg model =
         GotRegisterResult result ->
             case result of
                 Ok { token } ->
-                    ( Model (LoggedIn { token = token, serverMessage = Unknown })
+                    ( Model (LoggedIn { token = token, serverMessage = Unknown, answer = Nothing })
                     , Cmd.batch [ connectToGameServer token, confetti () ]
                     )
 
@@ -134,7 +150,7 @@ update msg model =
         GotLoginResult result ->
             case result of
                 Ok { token } ->
-                    ( Model (LoggedIn { token = token, serverMessage = Unknown })
+                    ( Model (LoggedIn { token = token, serverMessage = Unknown, answer = Nothing })
                     , Cmd.batch [ connectToGameServer token, confetti () ]
                     )
 
@@ -176,7 +192,7 @@ update msg model =
 
         SendAnswer answer ->
             case model.state of
-                LoggedIn _ ->
+                LoggedIn m ->
                     let
                         encodedAnswer =
                             Encode.object
@@ -184,7 +200,7 @@ update msg model =
                                 , ( "answer_idx", Encode.string answer )
                                 ]
                     in
-                    ( model, sendGameServerMessage encodedAnswer )
+                    ( Model (LoggedIn { m | answer = Just answer }), sendGameServerMessage encodedAnswer )
 
                 _ ->
                     ( model, Cmd.none )
@@ -342,11 +358,10 @@ view model =
     }
 
 
-viewLoggedIn : { a | serverMessage : ServerMessage } -> Html Msg
-viewLoggedIn { serverMessage } =
+viewLoggedIn : { a | serverMessage : ServerMessage, answer : Maybe String } -> Html Msg
+viewLoggedIn { serverMessage, answer } =
     div [ class "w-screen h-screen flex flex-col gap-4 items-center justify-center" ]
-        [ h1 [ class "text-3xl p-4 text-center font-bold text-white drop-shadow-xl" ] [ text "Welcome to the Lounge 🛋️" ]
-        , div []
+        [ div []
             (case serverMessage of
                 Unknown ->
                     []
@@ -355,29 +370,48 @@ viewLoggedIn { serverMessage } =
                     [ div
                         [ class "text-center bg-transparent shadow-lg rounded-full text-white animate-pulse border-2 border-fuchsia-800 w-[200px] h-[200px] flex justify-center items-center flex-col"
                         ]
-                        [ p [ class "text-[4rem]" ] [ String.fromInt time |> text ]
+                        [ h1 [ class "text-3xl p-4 text-center font-bold text-white drop-shadow-xl" ] [ text "Welcome to the Lounge 🛋️" ]
+                        , p [ class "text-[4rem]" ] [ String.fromInt time |> text ]
                         , p [] [ text "seconds till game" ]
                         ]
                     ]
 
                 GameStart ->
-                    [ "Game started" |> text ]
+                    [ h1 [ class "text-3xl p-4 text-center font-bold text-white drop-shadow-xl" ] [ text "Game will begin shortly..." ] ]
 
                 GotQuestion { question, options } ->
-                    [ text question
-                    , div []
+                    [ p [ class "w-[90vw] text-5xl mb-10 text-white break-words text-center" ] [ text question ]
+                    , div [ class "w-[80%] flex flex-col gap-4 mx-auto" ]
                         (options
                             |> zip [ "One", "Two", "Three", "Four" ]
                             |> List.map
                                 (\( idx, opt ) ->
-                                    button [ onClick (SendAnswer idx) ] [ text opt ]
+                                    button
+                                        [ onClick (SendAnswer idx)
+                                        , type_ "button"
+                                        , class
+                                            ("bg-white px-6 py-4 rounded-lg drop-shadow-lg cursor-pointer active:scale-90 transition-all"
+                                                ++ Maybe.withDefault ""
+                                                    (Maybe.map
+                                                        (\a ->
+                                                            if a == idx then
+                                                                " bg-yellow-500 text-white"
+
+                                                            else
+                                                                ""
+                                                        )
+                                                        answer
+                                                    )
+                                            )
+                                        ]
+                                        [ text opt ]
                                 )
                         )
                     ]
 
-                GotAnswer { status, answer } ->
-                    [ p [] [ "Answer status: " ++ status |> text ]
-                    , p [] [ "Answer index: " ++ answer |> text ]
+                GotAnswer ans ->
+                    [ p [] [ "Answer status: " ++ ans.status |> text ]
+                    , p [] [ "Answer index: " ++ ans.answer |> text ]
                     ]
 
                 GameEnd score ->
