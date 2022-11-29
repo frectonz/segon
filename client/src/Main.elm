@@ -335,18 +335,23 @@ view model =
     }
 
 
-viewLoggedIn : { a | token : String, serverMessage : ServerMessage } -> Html Msg
-viewLoggedIn { token, serverMessage } =
-    div []
-        [ h1 [] [ text "Logged in" ]
-        , pre [] [ text token ]
+viewLoggedIn : { a | serverMessage : ServerMessage } -> Html Msg
+viewLoggedIn { serverMessage } =
+    div [ class "w-screen h-screen flex flex-col gap-4 items-center justify-center" ]
+        [ h1 [ class "text-3xl p-4 text-center font-bold text-white drop-shadow-xl" ] [ text "Welcome to the Lounge 🛋️" ]
         , div []
             (case serverMessage of
                 Unknown ->
-                    [ "Unknown" |> text ]
+                    []
 
                 TimeTillGame time ->
-                    [ "Waiting " ++ String.fromInt time |> text ]
+                    [ div
+                        [ class "text-center p-20 bg-transparent shadow-lg rounded-full w-fit text-white animate-pulse border-2 border-fuchsia-800"
+                        ]
+                        [ p [ class "text-[5rem]" ] [ String.fromInt time |> text ]
+                        , p [] [ text "seconds till game" ]
+                        ]
+                    ]
 
                 GameStart ->
                     [ "Game started" |> text ]
@@ -376,7 +381,7 @@ viewLoggedIn { token, serverMessage } =
 
 viewLoggedOut : { a | username : String, password : String } -> Html Msg
 viewLoggedOut { username, password } =
-    div [ class "bg-fuchsia-600 w-screen h-screen grid place-items-center" ]
+    div [ class "w-screen h-screen grid place-items-center" ]
         [ div [ class "flex flex-col gap-2" ]
             [ h1 [ class "text-8xl text-white drop-shadow-xl font-bold -center mb-10" ] [ text "SEGON" ]
             , input
