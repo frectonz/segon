@@ -132,11 +132,11 @@ where
         let send_to_client = rx
             .map(|msg| {
                 let msg = serde_json::to_string(&msg);
-                let msg = match msg {
+                
+                match msg {
                     Ok(msg) => Message::text(msg),
                     Err(_) => Message::text("MESSAGE_SERIALIZATION_ERROR"),
-                };
-                msg
+                }
             })
             .map(Ok)
             .forward(outgoing);

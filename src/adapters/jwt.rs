@@ -26,7 +26,7 @@ impl TokenGenerator for Jwt {
     async fn generate(id: String) -> Result<String, Self::Error> {
         tokio::task::spawn_blocking(|| {
             let now = SystemTime::now().duration_since(UNIX_EPOCH)?;
-            let claims = Claims::new(EXPIRATION, now.as_secs(), id.into());
+            let claims = Claims::new(EXPIRATION, now.as_secs(), id);
 
             let token = encode(
                 &Header::default(),

@@ -21,7 +21,7 @@ impl Hasher for ShaHasher {
     async fn hash_password(password: String) -> Result<String, Self::Error> {
         tokio::task::spawn_blocking(move || {
             let params = Sha512Params::new(10_000).or(Err(ShaHasherError::HashError))?;
-            Ok(sha512_simple(&password, &params).or(Err(ShaHasherError::HashError))?)
+            sha512_simple(&password, &params).or(Err(ShaHasherError::HashError))
         })
         .await?
     }
