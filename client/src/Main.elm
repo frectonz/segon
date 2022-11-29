@@ -376,12 +376,36 @@ viewLoggedIn { token, serverMessage } =
 
 viewLoggedOut : { a | username : String, password : String } -> Html Msg
 viewLoggedOut { username, password } =
-    div []
-        [ h1 [ class "text-green-600" ] [ text "Logged out" ]
-        , input [ onInput UpadteUsername, value username ] []
-        , br [] []
-        , input [ onInput UpdatePassword, value password ] []
-        , br [] []
-        , button [ onClick Login ] [ text "Login" ]
-        , button [ onClick Register ] [ text "Register" ]
+    div [ class "bg-fuchsia-600 w-screen h-screen grid place-items-center" ]
+        [ div [ class "flex flex-col gap-2" ]
+            [ h1 [ class "text-8xl text-white drop-shadow-xl font-bold -center mb-10" ] [ text "SEGON" ]
+            , input
+                [ onInput UpadteUsername
+                , value username
+                , type_ "text"
+                , class "bg-transparent text-white accent-white placeholder-white text-xl p-2 rounded-md shadow-md mb-5 "
+                , placeholder "Username"
+                ]
+                []
+            , input
+                [ onInput UpdatePassword
+                , value password
+                , type_ "password"
+                , class "bg-transparent text-white accent-white placeholder-white text-xl p-2 rounded-md shadow-md mb-5 "
+                , placeholder "Password"
+                ]
+                []
+            , button
+                [ onClick Login
+                , type_ "button"
+                , class "inline-block px-6 py-2.5 bg-fuchsia-800 text-white font-bold text-xl leading-tight uppercase rounded shadow-md hover:bg-fuchsia-700 hover:shadow-lg focus:bg-fuchsia-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-fuchsia-800 active:shadow-lg transition duration-150 ease-in-out"
+                ]
+                [ text "Login" ]
+            , button
+                [ onClick Register
+                , type_ "button"
+                , class "inline-block px-6 py-2.5 bg-fuchsia-800 text-white font-bold text-xl leading-tight uppercase rounded shadow-md hover:bg-fuchsia-700 hover:shadow-lg focus:bg-fuchsia-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-fuchsia-800 active:shadow-lg transition duration-150 ease-in-out"
+                ]
+                [ text "Register" ]
+            ]
         ]
