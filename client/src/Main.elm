@@ -58,6 +58,7 @@ type AuthenticationState
         { token : String
         , serverMessage : ServerMessage
         , answer : Maybe String
+        , lastQuestion : Maybe Question
         }
     | LoggedOut
         { username : String
@@ -68,14 +69,9 @@ type AuthenticationState
 init : () -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
 init _ _ _ =
     ( Model
-        (LoggedIn
-            { token = ""
-            , answer = Nothing
-            , serverMessage =
-                GotQuestion
-                    { question = "What is question?"
-                    , options = [ "Option 1", "Option 2", "Option 3", "Option 4" ]
-                    }
+        (LoggedOut
+            { username = ""
+            , password = ""
             }
         )
     , Cmd.none
@@ -140,7 +136,14 @@ update msg model =
         GotRegisterResult result ->
             case result of
                 Ok { token } ->
-                    ( Model (LoggedIn { token = token, serverMessage = Unknown, answer = Nothing })
+                    ( Model
+                        (LoggedIn
+                            { token = token
+                            , serverMessage = Unknown
+                            , answer = Nothing
+                            , lastQuestion = Nothing
+                            }
+                        )
                     , Cmd.batch [ connectToGameServer token, confetti () ]
                     )
 
@@ -150,7 +153,14 @@ update msg model =
         GotLoginResult result ->
             case result of
                 Ok { token } ->
-                    ( Model (LoggedIn { token = token, serverMessage = Unknown, answer = Nothing })
+                    ( Model
+                        (LoggedIn
+                            { token = token
+                            , serverMessage = Unknown
+                            , answer = Nothing
+                            , lastQuestion = Nothing
+                            }
+                        )
                     , Cmd.batch [ connectToGameServer token, confetti () ]
                     )
 
@@ -160,7 +170,33 @@ update msg model =
         GotGameServerMessage val ->
             case ( model.state, Decode.decodeValue decodeServerMessage val ) of
                 ( LoggedIn m, Ok serverMessage ) ->
-                    ( Model (LoggedIn { m | serverMessage = serverMessage }), Cmd.none )
+                    let
+                        lastQuestion =
+                            case serverMessage of
+                                GotQuestion q ->
+                                    Just q
+
+                                _ ->
+                                    m.lastQuestion
+
+                        answer =
+                            case serverMessage of
+                                GotQuestion _ ->
+                                    Nothing
+
+                                _ ->
+                                    m.answer
+                    in
+                    ( Model
+                        (LoggedIn
+                            { m
+                                | serverMessage = serverMessage
+                                , lastQuestion = lastQuestion
+                                , answer = answer
+                            }
+                        )
+                    , Cmd.none
+                    )
 
                 _ ->
                     ( model, Cmd.none )
@@ -358,8 +394,8 @@ view model =
     }
 
 
-viewLoggedIn : { a | serverMessage : ServerMessage, answer : Maybe String } -> Html Msg
-viewLoggedIn { serverMessage, answer } =
+viewLoggedIn : { a | serverMessage : ServerMessage, answer : Maybe String, lastQuestion : Maybe Question } -> Html Msg
+viewLoggedIn { serverMessage, answer, lastQuestion } =
     div [ class "w-screen h-screen flex flex-col gap-4 items-center justify-center" ]
         [ div []
             (case serverMessage of
@@ -370,14 +406,13 @@ viewLoggedIn { serverMessage, answer } =
                     [ div
                         [ class "text-center bg-transparent shadow-lg rounded-full text-white animate-pulse border-2 border-fuchsia-800 w-[200px] h-[200px] flex justify-center items-center flex-col"
                         ]
-                        [ h1 [ class "text-3xl p-4 text-center font-bold text-white drop-shadow-xl" ] [ text "Welcome to the Lounge 🛋️" ]
-                        , p [ class "text-[4rem]" ] [ String.fromInt time |> text ]
+                        [ p [ class "text-[4rem]" ] [ String.fromInt time |> text ]
                         , p [] [ text "seconds till game" ]
                         ]
                     ]
 
                 GameStart ->
-                    [ h1 [ class "text-3xl p-4 text-center font-bold text-white drop-shadow-xl" ] [ text "Game will begin shortly..." ] ]
+                    [ h1 [ class "text-3xl p-4 text-center text-white drop-shadow-xl" ] [ text "Game will begin shortly..." ] ]
 
                 GotQuestion { question, options } ->
                     [ p [ class "w-[90vw] text-5xl mb-10 text-white break-words text-center" ] [ text question ]
@@ -393,8 +428,8 @@ viewLoggedIn { serverMessage, answer } =
                                             ("bg-white px-6 py-4 rounded-lg drop-shadow-lg cursor-pointer active:scale-90 transition-all"
                                                 ++ Maybe.withDefault ""
                                                     (Maybe.map
-                                                        (\a ->
-                                                            if a == idx then
+                                                        (\userAns ->
+                                                            if userAns == idx then
                                                                 " bg-yellow-500 text-white"
 
                                                             else
@@ -409,13 +444,48 @@ viewLoggedIn { serverMessage, answer } =
                         )
                     ]
 
-                GotAnswer ans ->
-                    [ p [] [ "Answer status: " ++ ans.status |> text ]
-                    , p [] [ "Answer index: " ++ ans.answer |> text ]
+                GotAnswer serverAns ->
+                    let
+                        q =
+                            lastQuestion
+                                |> Maybe.withDefault
+                                    { question = ""
+                                    , options = [ "", "", "", "" ]
+                                    }
+
+                        userAns =
+                            answer |> Maybe.withDefault ""
+                    in
+                    [ p [ class "w-[90vw] text-5xl mb-10 text-white break-words text-center" ] [ text q.question ]
+                    , div [ class "w-[80%] flex flex-col gap-4 mx-auto" ]
+                        (q.options
+                            |> zip [ "One", "Two", "Three", "Four" ]
+                            |> List.map
+                                (\( idx, opt ) ->
+                                    button
+                                        [ type_ "button"
+                                        , class
+                                            ("bg-white px-6 py-4 rounded-lg drop-shadow-lg cursor-pointer active:scale-90 transition-all text-white"
+                                                ++ (if serverAns.answer == idx then
+                                                        " bg-green-500"
+
+                                                    else if userAns == idx then
+                                                        " bg-yellow-500"
+
+                                                    else
+                                                        " bg-gray-500"
+                                                   )
+                                            )
+                                        ]
+                                        [ text opt ]
+                                )
+                        )
                     ]
 
                 GameEnd score ->
-                    [ "Game ended. Score: " ++ String.fromInt score |> text ]
+                    [ h1 [ class "text-3xl p-4 text-center text-white drop-shadow-xl" ]
+                        [ "Game ended. Score: " ++ String.fromInt score |> text ]
+                    ]
             )
         ]
 
