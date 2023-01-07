@@ -69,9 +69,11 @@ type AuthenticationState
 init : () -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
 init _ _ _ =
     ( Model
-        (LoggedOut
-            { username = ""
-            , password = ""
+        (LoggedIn
+            { token = ""
+            , serverMessage = GameEnd 10
+            , answer = Nothing
+            , lastQuestion = Nothing
             }
         )
     , Cmd.none
@@ -139,7 +141,7 @@ update msg model =
                     ( Model
                         (LoggedIn
                             { token = token
-                            , serverMessage = Unknown
+                            , serverMessage = NoMessage
                             , answer = Nothing
                             , lastQuestion = Nothing
                             }
@@ -156,7 +158,7 @@ update msg model =
                     ( Model
                         (LoggedIn
                             { token = token
-                            , serverMessage = Unknown
+                            , serverMessage = NoMessage
                             , answer = Nothing
                             , lastQuestion = Nothing
                             }
@@ -186,6 +188,14 @@ update msg model =
 
                                 _ ->
                                     m.answer
+
+                        cmd =
+                            case serverMessage of
+                                GameEnd _ ->
+                                    confetti ()
+
+                                _ ->
+                                    Cmd.none
                     in
                     ( Model
                         (LoggedIn
@@ -195,7 +205,7 @@ update msg model =
                                 , answer = answer
                             }
                         )
-                    , Cmd.none
+                    , cmd
                     )
 
                 _ ->
@@ -247,7 +257,7 @@ update msg model =
 
 
 type ServerMessage
-    = Unknown
+    = NoMessage
     | TimeTillGame Int
     | GameStart
     | GotQuestion Question
@@ -399,7 +409,7 @@ viewLoggedIn { serverMessage, answer, lastQuestion } =
     div [ class "w-screen h-screen flex flex-col gap-4 items-center justify-center" ]
         [ div []
             (case serverMessage of
-                Unknown ->
+                NoMessage ->
                     []
 
                 TimeTillGame time ->
